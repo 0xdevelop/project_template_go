@@ -13,6 +13,7 @@ import (
 	"github.com/george012/gtbox/gtbox_log"
 	"github.com/goccy/go-json"
 	"github.com/goccy/go-yaml"
+	"github.com/pelletier/go-toml/v2"
 )
 
 const (
@@ -28,13 +29,13 @@ var (
 )
 
 type FileConfig struct {
-	ApiCfg *api_config.ApiConfig `yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
-	Auth   Auth                  `yaml:"auth" json:"auth"`
+	ApiCfg *api_config.ApiConfig `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
+	Auth   Auth                  `toml:"auth"    yaml:"auth"    json:"auth"`
 }
 
 type Auth struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `toml:"username" yaml:"username" json:"username"`
+	Password string `toml:"password" yaml:"password" json:"password"`
 }
 
 func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
@@ -162,9 +163,13 @@ func LoadConfig(file string) error {
 		return yaml.Unmarshal(buf, GlobalConfig) // 直接解析到已初始化的结构
 	case ".json":
 		return json.Unmarshal(buf, GlobalConfig)
+	case ".toml":
+		return toml.Unmarshal(buf, GlobalConfig)
 	default:
 		if err := yaml.Unmarshal(buf, GlobalConfig); err != nil {
-			return json.Unmarshal(buf, GlobalConfig)
+			if err2 := toml.Unmarshal(buf, GlobalConfig); err2 != nil {
+				return json.Unmarshal(buf, GlobalConfig)
+			}
 		}
 		return nil
 	}
@@ -184,11 +189,17 @@ func SaveConfig(file string, content *FileConfig) error {
 		buf, err = yaml.MarshalWithOptions(content, yaml.WithComment(buildYAMLCommentMap(content, "")))
 	case ".json":
 		buf, err = json.MarshalIndent(content, "", "    ")
+	case ".toml":
+		buf, err = toml.Marshal(content)
 	default:
-		// 如果无扩展名或未知扩展名，尝试两种格式
+		// 未知扩展名 → 优先 yaml，回退 toml，最后 json
 		buf, err = yaml.MarshalWithOptions(content, yaml.WithComment(buildYAMLCommentMap(content, "")))
 		if err != nil {
-			buf, err = json.MarshalIndent(content, "", "    ")
+			if buf2, err2 := toml.Marshal(content); err2 == nil {
+				buf, err = buf2, nil
+			} else {
+				buf, err = json.MarshalIndent(content, "", "    ")
+			}
 		}
 	}
 

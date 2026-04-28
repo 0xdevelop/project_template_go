@@ -34,6 +34,7 @@ jobs:
           skipIfReleaseExists: 'true'
           tag: ${{ env.LATEST_TAG }}
           name: ${{ env.LATEST_TAG }}
+          bodyFile: changelog/${{ env.LATEST_TAG }}.md
 
   Build:
     runs-on: ubuntu-latest

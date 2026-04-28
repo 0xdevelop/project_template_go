@@ -1,5 +1,5 @@
 [Unit]
-Description=project_template_go agent
+Description=project_template_go service
 After=network-online.target
 Wants=network-online.target
 
