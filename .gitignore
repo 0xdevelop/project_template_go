@@ -1,8 +1,5 @@
 .DS_Store
 /bin/
-/FLTK.framework/
-/share/
-
 *~
 *.swp
 .idea/
@@ -13,7 +10,6 @@ build/
 CMake/
 
 .CLAUDE.md
-CLAUDE.md
 .claude/
 
 logs/
@@ -22,3 +18,5 @@ logs/
 ai_write/
 
 .trae/
+tmp/
+test_ui/web/node_modules/

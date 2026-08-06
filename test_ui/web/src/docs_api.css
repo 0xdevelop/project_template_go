@@ -1,0 +1,204 @@
+:root {
+  --doc-bg: #ffffff;
+  --doc-fg: #1f2328;
+  --doc-muted: #57606a;
+  --doc-border: #d0d7de;
+  --doc-code-bg: #f6f8fa;
+  --doc-accent: #0969da;
+  --doc-toc-bg: #fafbfc;
+  --doc-th-bg: #f6f8fa;
+  --doc-quote: #57606a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --doc-bg: #0d1117;
+    --doc-fg: #e6edf3;
+    --doc-muted: #8d96a0;
+    --doc-border: #30363d;
+    --doc-code-bg: #161b22;
+    --doc-accent: #4493f8;
+    --doc-toc-bg: #10151c;
+    --doc-th-bg: #161b22;
+    --doc-quote: #8d96a0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--doc-bg);
+  color: var(--doc-fg);
+  font:
+    16px/1.7 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    sans-serif;
+}
+
+#layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+#toc {
+  position: sticky;
+  top: 0;
+  flex: none;
+  width: 270px;
+  height: 100vh;
+  padding: 24px 16px;
+  overflow-y: auto;
+  font-size: 14px;
+  background: var(--doc-toc-bg);
+  border-right: 1px solid var(--doc-border);
+}
+
+#toc .toc-title {
+  margin-bottom: 12px;
+  color: var(--doc-muted);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#toc a {
+  display: block;
+  padding: 3px 8px;
+  overflow: hidden;
+  color: var(--doc-fg);
+  white-space: nowrap;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  border-radius: 6px;
+}
+
+#toc a:hover {
+  color: var(--doc-accent);
+  background: var(--doc-code-bg);
+}
+
+#toc a.lv3 {
+  padding-left: 24px;
+  color: var(--doc-muted);
+}
+
+#main {
+  flex: 1;
+  min-width: 0;
+  max-width: 980px;
+  padding: 40px 48px 120px;
+}
+
+#doc h1 {
+  padding-bottom: 0.3em;
+  font-size: 2em;
+  border-bottom: 1px solid var(--doc-border);
+}
+
+#doc h2 {
+  margin-top: 1.8em;
+  padding-bottom: 0.3em;
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--doc-border);
+}
+
+#doc h3 {
+  margin-top: 1.5em;
+  font-size: 1.2em;
+}
+
+#doc h1,
+#doc h2,
+#doc h3,
+#doc h4 {
+  line-height: 1.3;
+  scroll-margin-top: 16px;
+}
+
+#doc a {
+  color: var(--doc-accent);
+  text-decoration: none;
+}
+
+#doc a:hover {
+  text-decoration: underline;
+}
+
+#doc code {
+  padding: 0.1em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+  font-size: 0.875em;
+  background: var(--doc-code-bg);
+  border: 1px solid var(--doc-border);
+  border-radius: 6px;
+}
+
+#doc pre {
+  padding: 14px 16px;
+  overflow-x: auto;
+  line-height: 1.5;
+  background: var(--doc-code-bg);
+  border: 1px solid var(--doc-border);
+  border-radius: 8px;
+}
+
+#doc pre code {
+  padding: 0;
+  font-size: 0.875em;
+  background: none;
+  border: none;
+}
+
+#doc table {
+  display: block;
+  max-width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+#doc th,
+#doc td {
+  padding: 6px 13px;
+  border: 1px solid var(--doc-border);
+}
+
+#doc th {
+  font-weight: 600;
+  background: var(--doc-th-bg);
+}
+
+#doc blockquote {
+  margin: 1em 0;
+  padding: 0 1em;
+  color: var(--doc-quote);
+  border-left: 4px solid var(--doc-border);
+}
+
+#doc ul,
+#doc ol {
+  padding-left: 2em;
+}
+
+#doc li {
+  margin: 0.25em 0;
+}
+
+@media (max-width: 900px) {
+  #toc {
+    display: none;
+  }
+
+  #main {
+    padding: 24px 20px 80px;
+  }
+}

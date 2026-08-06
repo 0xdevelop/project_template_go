@@ -111,6 +111,7 @@ function find_prev_release_commit() {
 }
 
 function gen_changelog_if_possible() {
+    local del_version_no="$1"
     local out_dir out_file prev_release_sha range_end range
     out_dir="changelog"
     mkdir -p "${out_dir}"
@@ -121,7 +122,6 @@ function gen_changelog_if_possible() {
     range_end="HEAD"
 
     if [ -z "${prev_release_sha}" ]; then
-        # 没有历史 release marker：从仓库首提交到当前 HEAD
         prev_release_sha="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
         range="${prev_release_sha}..${range_end}"
         echo "[changelog] no previous Release marker found, use range ${range}"
@@ -149,8 +149,6 @@ function gen_changelog_if_possible() {
             echo "- (no commits between releases)"
             echo "- (no file changes)"
         else
-            # 概览（总增删行/文件数）
-            # 例如： " 3 files changed, 10 insertions(+), 2 deletions(-)"
             local shortstat
             shortstat="$(git diff --shortstat "${range}" 2>/dev/null || true)"
             if [ -n "${shortstat}" ]; then
@@ -159,7 +157,6 @@ function gen_changelog_if_possible() {
                 echo "- (no file changes)"
             fi
             echo
-            # 文件级统计（不输出具体 diff 内容）
             echo '```'
             git diff --stat "${range}" 2>/dev/null || true
             echo '```'
@@ -191,13 +188,18 @@ function gen_changelog_if_possible() {
     fi
 }
 
+function gen_api_docs() {
+  ./gen_api_docs.sh "${NEXT_VERSION}"
+}
+
 function git_handle_push() {
     local current_version_no=${CURRENT_VERSION//v/}
     local next_version_no=${NEXT_VERSION//v/}
     local pre_del_version_no=$(get_pre_del_version_no "$current_version_no")
     echo "Pre Del Version With v"${pre_del_version_no}
 
-    gen_changelog_if_possible \
+    gen_changelog_if_possible "${pre_del_version_no}" \
+    && gen_api_docs \
     && rm -rf changelog/v${pre_del_version_no}.md \
     && git add . \
     && git commit -m "Release:--: v${next_version_no}_$(date -u +"%Y-%m-%d_%H:%M:%S")"_"UTC" \

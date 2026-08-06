@@ -1,10 +1,10 @@
 package common
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -48,7 +48,7 @@ func LoadSigHandle(cleanAction func(), testMethods []func()) {
 		testMethod(testMethods)
 	}
 	// 创建一个信号通道
-	chSig := make(chan os.Signal)
+	chSig := make(chan os.Signal, 1)
 	signal.Notify(chSig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGKILL)
 
 	// 阻断主进程等待signal
@@ -88,48 +88,45 @@ func ExitApp() {
 func PanicHandler(context ...string) {
 	err := recover()
 	if err != nil {
-		timestamp := gtbox_time.NowUTC().Format("2006-01-02T15:04:05.000") + " UTC"
+		at_time := gtbox_time.NowUTC().Format("2006-01-02_15:04:05.000") + " UTC"
 		gtbox_log.LogErrorf("====================== Panic Error ======================")
 		if len(context) > 0 {
-			gtbox_log.LogErrorf("[%s] 上下文: %s", timestamp, strings.Join(context, ", "))
+			gtbox_log.LogErrorf("[%s] 上下文: %s", at_time, strings.Join(context, ", "))
 		}
-		gtbox_log.LogErrorf("程序遇到严重错误")
-		gtbox_log.LogErrorf("错误详细信息: %+v", err)
+		gtbox_log.LogErrorf("发生时间: [%s]", at_time)
+		gtbox_log.LogErrorf("错误信息: [%v]", err)
 
 		// 获取堆栈信息
 		stack := debug.Stack()
-		stackLines := strings.Split(string(stack), "\n")
 
-		// 提取触发 panic 的方法名、文件和行号
+		// 提取真正触发 panic 的方法、文件和行号
 		var methodName, fileName string
 		var lineNum int
-		for i, line := range stackLines {
-			if strings.Contains(line, ".go:") && !strings.Contains(line, "runtime/") {
-				// 假设第一行非 runtime 的堆栈帧是触发点
-				if i > 0 && i-1 < len(stackLines) {
-					prevLine := stackLines[i-1]
-					if idx := strings.LastIndex(prevLine, "("); idx > 0 {
-						methodName = strings.TrimSpace(prevLine[:idx])
-						if lastDot := strings.LastIndex(methodName, "."); lastDot > 0 {
-							methodName = methodName[lastDot+1:]
-						}
-					}
-				}
-				parts := strings.Split(line, ":")
-				if len(parts) >= 2 {
-					fileName = strings.TrimSpace(parts[0])
-					if colonIdx := strings.Index(parts[1], " "); colonIdx > 0 {
-						lineNumStr := parts[1][:colonIdx]
-						fmt.Sscanf(lineNumStr, "%d", &lineNum)
-					}
-				}
+
+		pcs := make([]uintptr, 64)
+		count := runtime.Callers(2, pcs)
+		frames := runtime.CallersFrames(pcs[:count])
+
+		for {
+			frame, more := frames.Next()
+			isRuntimeFrame := strings.HasPrefix(frame.Function, "runtime.") || strings.HasPrefix(frame.Function, "runtime/")
+			isPanicHandler := strings.HasSuffix(frame.Function, ".PanicHandler")
+
+			if frame.Function != "" && !isRuntimeFrame && !isPanicHandler {
+				methodName = frame.Function
+				fileName = frame.File
+				lineNum = frame.Line
+				break
+			}
+
+			if !more {
 				break
 			}
 		}
 
-		gtbox_log.LogErrorf("触发 Panic 的方法: %s", methodName)
-		gtbox_log.LogErrorf("文件: %s, 行号: %d", fileName, lineNum)
-		gtbox_log.LogErrorf("完整堆栈跟踪:\n%s", string(stack))
+		gtbox_log.LogErrorf("触发方法: [%s]", methodName)
+		gtbox_log.LogErrorf("所在文件: [%s], 行号: [%d]", fileName, lineNum)
+		gtbox_log.LogErrorf("堆栈跟踪:\n%s", string(stack))
 		gtbox_log.LogErrorf("=========================================================")
 	}
 }

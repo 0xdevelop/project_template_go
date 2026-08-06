@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="project_template_go 开发环境 API 调试台" />
+    <title>API Lab</title>
+    <link rel="stylesheet" href="./index.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-cell">
+          <a class="brand" href="/" aria-label="API Lab 首页">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32">
+                <path d="M8 5.5h11.5L25 11v15.5H8z" />
+                <path d="M19.5 5.5V11H25M12 16h9M12 20h7" />
+              </svg>
+            </span>
+            <span class="brand-copy">
+              <span class="brand-line">
+                <strong id="project-name">project_template_go</strong>
+                <span id="project-version">v0.0.2</span>
+              </span>
+              <small id="project-bundle">com.project_template_go.project_template_go</small>
+            </span>
+          </a>
+          <a
+            class="doc-link"
+            href="/docs_api"
+            target="_blank"
+            rel="noopener"
+          >查看 API 文档</a>
+        </div>
+
+        <div class="test-account" aria-label="默认测试账号">
+          <span class="test-account-label">TEST ACCOUNT</span>
+          <label for="test-email">邮箱</label>
+          <input
+            id="test-email"
+            name="test-email"
+            type="email"
+            value="test@test.com"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <label for="test-password">密码</label>
+          <input
+            id="test-password"
+            name="test-password"
+            type="password"
+            value="00000000"
+            autocomplete="off"
+            title="注册新账号要求密码至少 15 个字符；此默认值适用于已有测试账号"
+          />
+        </div>
+
+        <div class="project-facts" aria-label="项目基本信息">
+          <span class="fact">
+            <small>MODE</small>
+            <strong id="project-mode">Debug</strong>
+          </span>
+          <span class="fact transport-fact">
+            <small>JSON-RPC</small>
+            <strong id="jsonrpc-port">:13001</strong>
+          </span>
+          <span class="fact transport-fact">
+            <small>MCP</small>
+            <strong id="mcp-port">:13002</strong>
+          </span>
+          <span class="fact transport-fact">
+            <small>WS</small>
+            <strong id="websocket-port">:13004</strong>
+          </span>
+          <span class="fact transport-fact">
+            <small>gRPC</small>
+            <strong id="grpc-port">:13005</strong>
+          </span>
+          <span class="fact status-fact">
+            <span class="state-dot" aria-hidden="true"></span>
+            <strong>LOCAL</strong>
+          </span>
+        </div>
+
+      </header>
+
+      <section class="protocol-bar" aria-label="调用协议">
+        <div class="protocol-context">
+          <span>API TRANSPORT</span>
+          <strong>同一 supported API 清单</strong>
+        </div>
+        <div class="protocol-switch" role="group" aria-label="API 协议">
+          <button
+            class="protocol-tab is-active"
+            aria-pressed="true"
+            type="button"
+            data-protocol="jsonrpc"
+          >
+            JSON-RPC
+          </button>
+          <button
+            class="protocol-tab"
+            aria-pressed="false"
+            type="button"
+            data-protocol="mcp"
+          >
+            MCP
+          </button>
+          <button
+            class="protocol-tab"
+            aria-pressed="false"
+            type="button"
+            data-protocol="websocket"
+          >
+            WebSocket
+          </button>
+          <button
+            class="protocol-tab"
+            aria-pressed="false"
+            type="button"
+            data-protocol="grpc"
+          >
+            gRPC
+          </button>
+        </div>
+        <div class="protocol-actions">
+          <div class="protocol-endpoint">
+            <span>ENDPOINT</span>
+            <div class="endpoint-control">
+              <span class="method-badge" id="transport-method">POST</span>
+              <input
+                id="endpoint"
+                name="endpoint"
+                type="url"
+                aria-label="Endpoint"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+          <button
+            class="icon-button"
+            id="copy-command"
+            type="button"
+            aria-label="复制调用命令"
+            title="复制调用命令"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 9h10v10H9z" />
+              <path d="M5 15H4V5h10v1" />
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <main
+        class="triple-split root-split"
+        id="root-workspace"
+        data-triple-split
+        data-min-first="330"
+        data-min-middle="390"
+        data-min-third="360"
+        data-middle-ratio="0.52"
+        style="--triple-first: 420px; --triple-middle: 480px"
+      >
+        <aside
+          class="catalog-panel"
+          id="api-catalog"
+          data-triple-pane="first"
+          aria-label="API 快速选择"
+        >
+          <div class="pane-heading">
+            <div>
+              <span class="pane-index">01</span>
+              <strong>API CATALOG</strong>
+            </div>
+            <span id="catalog-count">0 functions</span>
+          </div>
+
+          <div
+            class="triple-split catalog-columns"
+            id="catalog-columns"
+            data-triple-split
+            data-min-first="72"
+            data-min-middle="72"
+            data-min-third="96"
+            style="--triple-first: 110px; --triple-middle: 110px"
+            aria-label="API 三级联动选择"
+          >
+            <section class="catalog-column" data-triple-pane="first">
+              <div class="section-label">
+                <span>功能域</span>
+              </div>
+              <label class="sr-only" for="api-domain">API 功能域</label>
+              <div class="catalog-list-wrap">
+                <select
+                  class="catalog-list"
+                  id="api-domain"
+                  name="api-domain"
+                  size="12"
+                ></select>
+              </div>
+            </section>
+
+            <div
+              class="splitter is-vertical-bar catalog-column-splitter"
+              role="separator"
+              tabindex="0"
+              data-triple-separator="first"
+              aria-label="调整功能域列宽"
+              aria-orientation="vertical"
+            ><span></span></div>
+
+            <section class="catalog-column" data-triple-pane="middle">
+              <div class="section-label">
+                <span>功能组</span>
+              </div>
+              <label class="sr-only" for="api-group">API 功能组</label>
+              <div class="catalog-list-wrap">
+                <select
+                  class="catalog-list"
+                  id="api-group"
+                  name="api-group"
+                  size="12"
+                ></select>
+              </div>
+            </section>
+
+            <div
+              class="splitter is-vertical-bar catalog-column-splitter"
+              role="separator"
+              tabindex="0"
+              data-triple-separator="second"
+              aria-label="调整功能组列宽"
+              aria-orientation="vertical"
+            ><span></span></div>
+
+            <section class="catalog-column method-column" data-triple-pane="third">
+              <div class="section-label">
+                <span>方法</span>
+              </div>
+              <label class="sr-only" for="api-function">API 方法</label>
+              <div class="catalog-list-wrap">
+                <select
+                  class="catalog-list"
+                  id="api-function"
+                  name="api-function"
+                  size="12"
+                ></select>
+              </div>
+            </section>
+          </div>
+        </aside>
+
+        <div
+          class="splitter is-vertical-bar"
+          role="separator"
+          tabindex="0"
+          data-triple-separator="first"
+          aria-label="调整 API 导航宽度"
+          aria-orientation="vertical"
+        ><span></span></div>
+
+        <section
+          class="split-view is-vertical request-split"
+          data-triple-pane="middle"
+          data-split
+          data-orientation="vertical"
+          data-min-first="235"
+          data-min-second="190"
+          style="--split-first: 45%"
+          aria-labelledby="request-title"
+        >
+            <div class="request-params" data-pane="first">
+              <div class="pane-heading request-heading">
+                <div>
+                  <span class="pane-index">02</span>
+                  <strong id="request-title">REQUEST</strong>
+                  <span class="pane-subtitle">参数信息</span>
+                </div>
+                <div class="heading-actions">
+                  <span class="shortcut"><kbd>⌘</kbd><kbd>↵</kbd></span>
+                  <button class="send-button" id="send-request" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m4 4 17 8-17 8 3-8z" />
+                      <path d="M7 12h14" />
+                    </svg>
+                    <span>请求</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="parameter-scroll">
+                <div class="request-id-row">
+                  <div class="field id-field">
+                    <label for="request-id">Request ID</label>
+                    <input
+                      id="request-id"
+                      name="request-id"
+                      type="text"
+                      readonly
+                      spellcheck="false"
+                    />
+                  </div>
+                </div>
+
+                <div class="parameter-editors">
+                  <div class="compact-editor">
+                    <div class="editor-label">
+                      <label for="request-body">实际 JSON</label>
+                      <div class="editor-actions">
+                        <button class="text-button" id="format-request" type="button">
+                          格式化
+                        </button>
+                        <button class="text-button" id="reset-request" type="button">
+                          重置
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      id="request-body"
+                      name="request-body"
+                      rows="7"
+                      spellcheck="false"
+                      aria-label="JSON 请求体"
+                    ></textarea>
+                  </div>
+                  <div class="compact-editor">
+                    <div class="editor-label">
+                      <label for="request-headers">Headers</label>
+                      <small id="headers-count">0 项</small>
+                    </div>
+                    <textarea
+                      id="request-headers"
+                      name="request-headers"
+                      rows="7"
+                      spellcheck="false"
+                      aria-label="请求 Headers"
+                    ></textarea>
+                  </div>
+                </div>
+                <p class="field-error" id="request-error" role="alert"></p>
+              </div>
+            </div>
+
+            <div
+              class="splitter is-horizontal-bar"
+              role="separator"
+              tabindex="0"
+              aria-label="调整请求与调用代码区域高度"
+              aria-orientation="horizontal"
+            ><span></span></div>
+
+            <div class="call-code-pane" data-pane="second">
+              <div class="subpane-heading">
+                <div>
+                  <strong>调用代码</strong>
+                  <span id="code-method-label">test</span>
+                </div>
+                <div class="code-toolbar">
+                  <div class="code-language-switch" role="tablist" aria-label="调用代码语言">
+                    <button
+                      class="code-language-tab is-active"
+                      type="button"
+                      role="tab"
+                      aria-selected="true"
+                      data-code-language="go"
+                    >
+                      Go
+                    </button>
+                    <button
+                      class="code-language-tab"
+                      type="button"
+                      role="tab"
+                      aria-selected="false"
+                      data-code-language="ts"
+                    >
+                      TS
+                    </button>
+                  </div>
+                  <button class="text-button" id="copy-invocation" type="button">
+                    复制
+                  </button>
+                </div>
+              </div>
+              <div class="code-output">
+                <span class="language-tag" id="code-language-tag">GO</span>
+                <pre id="invocation-code" tabindex="0"></pre>
+              </div>
+            </div>
+        </section>
+
+        <div
+          class="splitter is-vertical-bar"
+          role="separator"
+          tabindex="0"
+          data-triple-separator="second"
+          aria-label="调整请求与响应区域宽度"
+          aria-orientation="vertical"
+        ><span></span></div>
+
+        <section
+          class="response-panel"
+          data-triple-pane="third"
+          aria-labelledby="response-title"
+        >
+            <div class="pane-heading response-heading">
+              <div>
+                <span class="pane-index">03</span>
+                <strong id="response-title">RESPONSE</strong>
+              </div>
+              <div class="response-toolbar">
+                <div class="response-meta" id="response-meta" aria-live="polite">
+                  <span class="status-pill is-idle">WAIT</span>
+                  <span>— ms</span>
+                  <span>— B</span>
+                </div>
+                <button
+                  class="icon-button compact"
+                  id="copy-response"
+                  type="button"
+                  aria-label="复制响应"
+                  title="复制响应"
+                  disabled
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="8" y="8" width="11" height="11" rx="2" />
+                    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="response-tabs" role="tablist" aria-label="响应视图">
+              <button
+                class="response-tab is-active"
+                role="tab"
+                aria-selected="true"
+                type="button"
+                data-response-tab="decoded"
+              >
+                DECODED
+              </button>
+              <button
+                class="response-tab"
+                role="tab"
+                aria-selected="false"
+                type="button"
+                data-response-tab="raw"
+              >
+                RAW
+              </button>
+              <button
+                class="response-tab"
+                role="tab"
+                aria-selected="false"
+                type="button"
+                data-response-tab="headers"
+              >
+                HEADERS
+              </button>
+            </div>
+
+            <div class="response-stage">
+              <div class="response-empty" id="response-empty">
+                <div class="empty-visual" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+                <strong>等待响应</strong>
+                <p>⌘/Ctrl + Enter 快速请求</p>
+              </div>
+              <pre
+                class="response-code is-hidden"
+                id="response-code"
+                tabindex="0"
+              ></pre>
+            </div>
+
+            <aside class="history">
+              <div class="history-title">
+                <div>
+                  <strong>RECENT</strong>
+                  <span>本次运行记录</span>
+                </div>
+                <button class="text-button" id="clear-history" type="button">
+                  清空
+                </button>
+              </div>
+              <ol id="history-list"></ol>
+            </aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>

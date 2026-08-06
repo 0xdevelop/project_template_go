@@ -2,18 +2,18 @@ api_cfg: # API configurations
   enabled: true
   port: 12095
   apis:
-    - api_path: test_rpc
-      enabled: true
-      address: http://127.0.0.1:9332
-      authenabled: true
-      user: testuser
-      pwd: testuserpwd
-    - api_path: test_rpc_02
-      enabled: true
-      address: http://127.0.0.1:8332
-      authenabled: true
-      user: testuser
-      pwd: testuserpwd
+  - api_path: test_rpc
+    enabled: true
+    address: http://127.0.0.1:9332
+    authenabled: true
+    user: testuser
+    pwd: testuserpwd
+  - api_path: test_rpc_02
+    enabled: true
+    address: http://127.0.0.1:8332
+    authenabled: true
+    user: testuser
+    pwd: testuserpwd
   client_timeout: 10s
   permissions:
     default:
@@ -21,23 +21,23 @@ api_cfg: # API configurations
       encryption_enabled: true
       allowed_uas: []
       allowed_methods:
-        - test
+      - test
     test_a:
       permission_tag: test_a
       encryption_enabled: false
       allowed_uas: []
       allowed_methods:
-        - test_a_method_01
-        - test_a_method_02
-        - test_a_method_03
+      - test_a_method_01
+      - test_a_method_02
+      - test_a_method_03
     test_b:
       permission_tag: test_b
       encryption_enabled: true
       allowed_uas: []
       allowed_methods:
-        - test_b_method_01
-        - test_b_method_02
-        - test_b_method_03
+      - test_b_method_01
+      - test_b_method_02
+      - test_b_method_03
     test_c:
       permission_tag: test_c
       encryption_enabled: true

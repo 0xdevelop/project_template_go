@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["scripts/**/*.ts", "src/**/*.ts"]
+}

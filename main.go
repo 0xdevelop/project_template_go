@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"time"
 
 	"github.com/0xYeah/project_template_go/api"
+	"github.com/0xYeah/project_template_go/custom_cmd"
 	"github.com/0xYeah/project_template_go/common"
 	"github.com/0xYeah/project_template_go/config"
-	"github.com/0xYeah/project_template_go/custom_cmd"
+	"github.com/0xYeah/project_template_go/db"
+	"github.com/0xYeah/project_template_go/test_ui"
 	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_cmd"
 	"github.com/george012/gtbox/gtbox_log"
+	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_config"
+	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_mysql"
 )
 
 var (
@@ -88,24 +91,55 @@ func main() {
 
 	setupApp()
 
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Recovered from panic:", r)
-			gtbox_log.LogErrorf("系统崩溃:%v", r)
-			gtbox_log.LogErrorf("系统崩溃:\n%s", debug.Stack())
-		}
-	}()
+	defer common.PanicHandler()
 
 	if config.CurrentApp.CurrentRunMode == gtbox.RunModeDebug {
 		config.CurrentApp.AppConfigFilePath = "./example_files/config_local.yaml"
+		//config.CurrentApp.AppConfigFilePath = "./example_files/config_local_outside.yaml"
+	} else {
+		config.CurrentApp.AppConfigFilePath = "./conf/config.yaml"
 	}
 
 	config.SyncConfigFile(func(err error) {
 		gtbox_log.LogErrorf("[sync config eeror]:%v", err)
 	})
+	gtbox_log.LogInfof("开始链接数据库！")
+	db.GlobalMysqlCtl = gtbox_orm_mysql.Instance()
 
-	api.StartAPIServices(config.GlobalConfig.ApiCfg)
+	db.GlobalMysqlCtl.OPenMysql(
+		config.GlobalConfig.MysqlCfg.DBUser,
+		config.GlobalConfig.MysqlCfg.DBPwd,
+		config.GlobalConfig.MysqlCfg.DBName,
+		config.GlobalConfig.MysqlCfg.DBAddress,
+		config.GlobalConfig.MysqlCfg.DBPort,
+		gtbox_orm_config.GTORMTimeZoneUTC,
+		func(err error) {
+			if err != nil {
+				gtbox_log.LogErrorf("连接数据库异常！错误信息：%v", err.Error())
+				return
+			} else {
+				gtbox_log.LogInfof("连接数据库成功！")
 
-	common.LoadSigHandle(nil, nil)
+				if migrateErr := db.MysqlAutoMigrate(); migrateErr != nil {
+					gtbox_log.LogErrorf("Mysql AutoMigrate failed: %v", migrateErr)
+					return
+				}
+				gtbox_log.LogInfof("Mysql AutoMigrate completed")
+
+				if config.GlobalConfig.ApiCfg != nil {
+					api.StartAPIServices(config.GlobalConfig.ApiCfg)
+				} else {
+					gtbox_log.LogErrorf("api config was not initialized")
+				}
+
+				if config.CurrentApp.CurrentRunMode != gtbox.RunModeRelease {
+					test_ui.LoadTestWeb()
+				}
+			}
+		},
+	)
+	common.LoadSigHandle(func() {
+		api.StopApiServices()
+	}, nil)
 
 }

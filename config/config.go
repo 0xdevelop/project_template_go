@@ -9,8 +9,13 @@ import (
 	"strings"
 
 	"github.com/0xYeah/project_template_go/api/api_config"
-	"github.com/0xYeah/project_template_go/api/api_json_rpc/json_rpc_permissions"
+	"github.com/0xYeah/project_template_go/api/api_grpc/api_config_grpc"
+	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
+	"github.com/0xYeah/project_template_go/api/api_mcp/api_config_mcp"
+	"github.com/0xYeah/project_template_go/api/api_websocket/api_config_websocket"
+	"github.com/0xYeah/project_template_go/db/db_config"
 	"github.com/george012/gtbox/gtbox_log"
+	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_config"
 	"github.com/goccy/go-json"
 	"github.com/goccy/go-yaml"
 	"github.com/pelletier/go-toml/v2"
@@ -29,13 +34,8 @@ var (
 )
 
 type FileConfig struct {
-	ApiCfg *api_config.ApiConfig `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
-	Auth   Auth                  `toml:"auth"    yaml:"auth"    json:"auth"`
-}
-
-type Auth struct {
-	Username string `toml:"username" yaml:"username" json:"username"`
-	Password string `toml:"password" yaml:"password" json:"password"`
+	MysqlCfg *db_config.MysqlConfig          `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg" comment:"Mysql configurations"`
+	ApiCfg   *api_config.ApiConfig               `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
 }
 
 func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
@@ -158,21 +158,25 @@ func LoadConfig(file string) error {
 	}
 
 	ext := strings.ToLower(filepath.Ext(file))
+	var decodeErr error
 	switch ext {
 	case ".yaml", ".yml":
-		return yaml.Unmarshal(buf, GlobalConfig) // 直接解析到已初始化的结构
+		decodeErr = yaml.Unmarshal(buf, GlobalConfig)
 	case ".json":
-		return json.Unmarshal(buf, GlobalConfig)
+		decodeErr = json.Unmarshal(buf, GlobalConfig)
 	case ".toml":
-		return toml.Unmarshal(buf, GlobalConfig)
+		decodeErr = toml.Unmarshal(buf, GlobalConfig)
 	default:
-		if err := yaml.Unmarshal(buf, GlobalConfig); err != nil {
-			if err2 := toml.Unmarshal(buf, GlobalConfig); err2 != nil {
-				return json.Unmarshal(buf, GlobalConfig)
+		if decodeErr = yaml.Unmarshal(buf, GlobalConfig); decodeErr != nil {
+			if decodeErr = toml.Unmarshal(buf, GlobalConfig); decodeErr != nil {
+				decodeErr = json.Unmarshal(buf, GlobalConfig)
 			}
 		}
-		return nil
 	}
+	if decodeErr != nil {
+		return decodeErr
+	}
+	return nil
 }
 
 func SaveConfig(file string, content *FileConfig) error {
@@ -212,66 +216,38 @@ func SaveConfig(file string, content *FileConfig) error {
 }
 
 func generateDefaultConfig() *FileConfig {
-	aApiPort := apiPortDefault
-	clientTimeoutString := "10s"
+	aport := 13001
 	fileCfg := &FileConfig{
+		MysqlCfg: &db_config.MysqlConfig{
+			DBName:     "test_db",
+			DBUser:     "test_db_user",
+			DBPwd:      "test_db_pwd",
+			DBAddress:  "127.0.0.1",
+			DBPort:     3306,
+			DBTimeZone: gtbox_orm_config.GTORMTimeZoneUTC.String(),
+		},
 		ApiCfg: &api_config.ApiConfig{
-			Enabled: true,
-			Port:    aApiPort,
-			Apis: []*api_config.ApiProxy{
-				&api_config.ApiProxy{
-					ApiPath:     "test_rpc",
-					Enabled:     true,
-					Address:     "http://127.0.0.1:9332",
-					AuthEnabled: true,
-					User:        "testuser",
-					Pwd:         "testuserpwd",
-				},
-				&api_config.ApiProxy{
-					ApiPath:     "test_rpc_02",
-					Enabled:     true,
-					Address:     "http://127.0.0.1:8332",
-					AuthEnabled: true,
-					User:        "testuser",
-					Pwd:         "testuserpwd",
+			APICfgJsonRPC: &api_config_jsonRPC.APIConfigJsonRPC{
+				Enabled:           true,
+				Port:              aport,
+				EncryptionEnabled: false,
+			},
+			APICfgMCP: &api_config_mcp.APIConfigMCP{
+				Enabled:          true,
+				Port:             aport + 1,
+				MCPTransportType: api_config_mcp.MCPTransportTypeStreamableHTTP,
+			},
+			APICfgWebSocket: &api_config_websocket.APIConfigWebSocket{
+				Enabled: true,
+				Port:    aport + 3,
+				AllowedOrigins: []string{
+					"127.0.0.1:*",
+					"localhost:*",
 				},
 			},
-			ClientTimeout: clientTimeoutString,
-			Permissions: map[string]*json_rpc_permissions.Permission{
-				json_rpc_permissions.APIPermissionTagDefault: &json_rpc_permissions.Permission{
-					PermissionTag:     json_rpc_permissions.APIPermissionTagDefault,
-					EncryptionEnabled: true,
-					AllowedUAs:        []string{},
-					AllowedMethods: []string{
-						"test",
-					},
-				},
-				"test_a": &json_rpc_permissions.Permission{
-					PermissionTag:     "test_a",
-					EncryptionEnabled: false,
-					AllowedUAs:        []string{},
-					AllowedMethods: []string{
-						"test_a_method_01",
-						"test_a_method_02",
-						"test_a_method_03",
-					},
-				},
-				"test_b": &json_rpc_permissions.Permission{
-					PermissionTag:     "test_b",
-					EncryptionEnabled: true,
-					AllowedUAs:        []string{},
-					AllowedMethods: []string{
-						"test_b_method_01",
-						"test_b_method_02",
-						"test_b_method_03",
-					},
-				},
-				"test_c": &json_rpc_permissions.Permission{
-					PermissionTag:     "test_c",
-					EncryptionEnabled: true,
-					AllowedUAs:        []string{},
-					AllowedMethods:    []string{},
-				},
+			APICfgGRPC: &api_config_grpc.APIConfigGRPC{
+				Enabled: true,
+				Port:    aport + 4,
 			},
 		},
 	}
