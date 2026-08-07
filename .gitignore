@@ -20,3 +20,5 @@ ai_write/
 .trae/
 tmp/
 test_ui/web/node_modules/
+.playwright-mcp/
+
