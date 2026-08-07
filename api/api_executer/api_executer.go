@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/0xYeah/project_template_go/ability/ability_task"
 	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xYeah/project_template_go/api/api_error_code"
 	"github.com/0xYeah/project_template_go/api/api_supported_methods"
@@ -42,6 +43,12 @@ func APIExecuter(ctx context.Context, method string, params interface{}, encrypt
 		if ctx, err = api_auth_session.AuthenticateRequest(ctx, abilityParams); err != nil {
 			return finish(nil, err, encryptionKey)
 		}
+	}
+	// Async 受理语义的一次性接入（AGENTS 契约预留）：事务写任务记录并返回 task_id，
+	// Worker 后续调用同一注册项的 Execute。
+	if supportedMethod.Async {
+		acceptedValue, acceptErr := ability_task.AcceptAsyncTask(ctx, methodName, abilityParams)
+		return finish(acceptedValue, acceptErr, encryptionKey)
 	}
 	value, err := supportedMethod.Execute(ctx, abilityParams)
 	return finish(value, err, encryptionKey)

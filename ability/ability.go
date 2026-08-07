@@ -4,6 +4,7 @@ package ability
 import (
 	"context"
 
+	"github.com/0xYeah/project_template_go/ability/ability_task"
 	"github.com/0xYeah/project_template_go/ability/ability_user/ability_user_profile"
 	"github.com/0xYeah/project_template_go/api/api_auth"
 	"github.com/0xYeah/project_template_go/api/api_supported_methods"
@@ -32,4 +33,5 @@ func LoadAbilityAPIMethods() {
 	// user_profile 调用父包 ability_user 的数据方法，父包带子包装配会成 import 环
 	//（user → profile → user），故作为契约明记的唯一例外由顶层装配。
 	ability_user_profile.LoadAPIMethods()
+	ability_task.LoadAPIMethods()
 }

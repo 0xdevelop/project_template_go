@@ -12,6 +12,7 @@ import (
 	"github.com/0xYeah/project_template_go/config"
 	"github.com/0xYeah/project_template_go/custom_cmd"
 	"github.com/0xYeah/project_template_go/db"
+	"github.com/0xYeah/project_template_go/policy"
 	"github.com/0xYeah/project_template_go/test_ui"
 	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_cmd"
@@ -126,6 +127,9 @@ func main() {
 				}
 				gtbox_log.LogInfof("Mysql AutoMigrate completed")
 
+				// 维护调度域：长驻执行与周期维护大循环全部封装在 policy 内部
+				policy.PolicyServicesStart()
+
 				if config.GlobalConfig.ApiCfg != nil {
 					api.StartAPIServices(config.GlobalConfig.ApiCfg)
 				} else {
@@ -140,6 +144,7 @@ func main() {
 	)
 	common.LoadSigHandle(func() {
 		api.StopApiServices()
+		policy.PolicyServicesStop()
 	}, nil)
 
 }

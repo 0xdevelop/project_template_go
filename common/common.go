@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -85,13 +86,27 @@ func ExitApp() {
 	p.Signal(os.Interrupt)
 }
 
-func PanicHandler(context ...string) {
+// PanicHandler 统一 panic 兜底：输出富日志（时间/上下文/触发点/堆栈）。
+// args 接受任意个 string 作为上下文说明；额外传入一个 *error 时（如后台 Worker 需按 panic 落任务终态），
+// panic 会转为 error 写入该指针交还调用方。原有 PanicHandler() / PanicHandler("ctx") 调用形态不变。
+func PanicHandler(args ...interface{}) {
 	err := recover()
 	if err != nil {
+		var contexts []string
+		var errOut *error
+		for _, arg := range args {
+			switch value := arg.(type) {
+			case string:
+				contexts = append(contexts, value)
+			case *error:
+				errOut = value
+			}
+		}
+
 		at_time := gtbox_time.NowUTC().Format("2006-01-02_15:04:05.000") + " UTC"
 		gtbox_log.LogErrorf("====================== Panic Error ======================")
-		if len(context) > 0 {
-			gtbox_log.LogErrorf("[%s] 上下文: %s", at_time, strings.Join(context, ", "))
+		if len(contexts) > 0 {
+			gtbox_log.LogErrorf("[%s] 上下文: %s", at_time, strings.Join(contexts, ", "))
 		}
 		gtbox_log.LogErrorf("发生时间: [%s]", at_time)
 		gtbox_log.LogErrorf("错误信息: [%v]", err)
@@ -128,5 +143,9 @@ func PanicHandler(context ...string) {
 		gtbox_log.LogErrorf("所在文件: [%s], 行号: [%d]", fileName, lineNum)
 		gtbox_log.LogErrorf("堆栈跟踪:\n%s", string(stack))
 		gtbox_log.LogErrorf("=========================================================")
+
+		if errOut != nil {
+			*errOut = fmt.Errorf("panic recovered: %v", err)
+		}
 	}
 }

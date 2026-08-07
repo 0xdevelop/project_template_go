@@ -55,6 +55,13 @@
 - 禁止通过 `mysql` CLI、手写 DDL、外部 shell 脚本或另一套迁移框架修改表结构；`AutoMigrate` 无法安全完成的破坏性变更必须先确认。
 - 数据库未初始化或连接不可用时必须返回明确错误，禁止 nil panic，也不得把未连接环境描述成真实数据库验证通过。
 
+## Task 异步与 Policy 维护调度
+
+- `SupportedMethod.Async` 受理已按预留契约一次性接入 `APIExecuter`（门禁后调 `ability_task.AcceptAsyncTask` 事务写任务记录并返回 `task_id`）；至此 api 层封版，后续任何业务演进不得再修改 `APIExecuter`。
+- 任务状态三字段分层：程序级 `run_status`（queued/running/done，done 唯一终态）、业务级 `process_status`（空/success/failed/cancelled/system_error）、量化 `progress`。两层值域零交集；枚举值在 Go 常量、model 列 comment、`docs/ability_task.md` 三处同步维护，改一处必改三处。
+- Worker 认领一律 `FOR UPDATE SKIP LOCKED`（MySQL 8.0+）；异步 `Execute` 必须幂等或自查重（重启恢复重跑的兜底契约）；任务载荷明文 JSON 存储，敏感值不得进入异步方法 arguments 与结果。
+- `policy` 是维护调度域：对外仅 `PolicyServicesStart` / `PolicyServicesStop`（对齐 api_services 形态），`main.go` 各一行调用；具体维护事项封装在 policy 包内部（直接 import 各域维护函数）。周期维护走单 goroutine 大循环：每轮把清单各单次执行一遍（含未尽之事侦测 `RequeueOrphanedTasks`）→ 间隔 `policy_cfg.policy_duration`（用时现解）。无特权启动恢复阶段——重启遗留由第一轮循环自然捞回。新增维护事项 = 域内写普通函数 + policy 清单加一行，禁止全局注册、隐藏 `init()`、反射扫描。
+
 ## 工具与测试纪律
 
 - 不得自造独立小工具 main 包、演示/测试程序包，工具类代码不得编进服务二进制，也不得塞进既有功能包（如 `custom_cmd`）。

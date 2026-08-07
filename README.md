@@ -56,6 +56,7 @@ project_template_go
 │   ├── api_auth               API 权限准入域：验证码、注册、登录、session/JWT、统一门禁（契约见 docs/ability_auth.md）
 │   └── api_error_code         通用业务错误码
 ├── ability                    父包带子包装配；默认注册 test 方法；ability_user 持 User model 与密码校验
+├── policy                     维护调度域：PolicyServicesStart/Stop 单入口，长驻 Worker 池 + 周期维护大循环（未尽之事自愈）
 ├── db                         GlobalMysqlCtl 唯一 MySQL 入口 + AutoMigrate 登记
 ├── config                     ProjectName/Version/BundleID + YAML/JSON/TOML 配置装配
 ├── common                     信号处理、panic 兜底

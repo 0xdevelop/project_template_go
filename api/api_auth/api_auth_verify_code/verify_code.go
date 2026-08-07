@@ -218,6 +218,26 @@ func deliverVerificationEmail(ctx context.Context, emailConfig *api_auth_config.
 	}
 }
 
+// PurgeExpired 删除过期超 24 小时的验证码行（保留窗口供近期排障），作为 policy 定期轮询租户运行。
+// 表内行只增不减，此清理是唯一出口；使用 Unscoped 硬删，软删行同样无保留价值。
+func PurgeExpired(ctx context.Context) error {
+	db, err := appdb.MysqlDB(ctx)
+	if err != nil {
+		return err
+	}
+	cutoff := time.Now().UTC().Add(-24 * time.Hour)
+	result := db.Unscoped().
+		Where("expires_at < ?", cutoff).
+		Delete(&authModel.AuthVerifyCode{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		gtbox_log.LogInfof("auth verify code purge: removed %d expired row(s)", result.RowsAffected)
+	}
+	return nil
+}
+
 func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.AuthVerifyCode, string, error) {
 	verificationConfig, err := api_auth_config.CurrentVerificationConfig()
 	if err != nil {

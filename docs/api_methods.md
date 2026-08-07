@@ -1,6 +1,6 @@
 # API 方法清单
 
-> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.10，共 12 个方法），禁止手改；新增方法后重新执行生成。
+> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.10，共 15 个方法），禁止手改；新增方法后重新执行生成。
 
 ## 统一调用方式
 
@@ -363,6 +363,87 @@
   "required": [
     "jwt_token",
     "nick_name"
+  ],
+  "type": "object"
+}
+```
+
+## task.get
+
+查询我的异步任务状态与结果
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 36,
+      "minLength": 36,
+      "type": "string"
+    }
+  },
+  "required": [
+    "jwt_token",
+    "task_id"
+  ],
+  "type": "object"
+}
+```
+
+## task.list
+
+列出我的异步任务（新→旧，最多 50 条）
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "jwt_token"
+  ],
+  "type": "object"
+}
+```
+
+## task.cancel
+
+取消我的排队中任务（执行中任务不可取消）
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 36,
+      "minLength": 36,
+      "type": "string"
+    }
+  },
+  "required": [
+    "jwt_token",
+    "task_id"
   ],
   "type": "object"
 }

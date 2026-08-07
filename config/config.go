@@ -3,7 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/0xYeah/project_template_go/ability/ability_task/ability_task_config"
 	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_config"
+	"github.com/0xYeah/project_template_go/policy/policy_config"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,9 +37,11 @@ var (
 )
 
 type FileConfig struct {
-	MysqlCfg *db_config.MysqlConfig      `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg" comment:"Mysql configurations"`
-	ApiCfg   *api_config.ApiConfig       `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
-	AuthCfg  *api_auth_config.AuthConfig `yaml:"auth_cfg" json:"auth_cfg" toml:"auth_cfg" comment:"Auth configurations"`
+	MysqlCfg  *db_config.MysqlConfig          `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg" comment:"Mysql configurations"`
+	ApiCfg    *api_config.ApiConfig           `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
+	AuthCfg   *api_auth_config.AuthConfig     `yaml:"auth_cfg" json:"auth_cfg" toml:"auth_cfg" comment:"Auth configurations"`
+	TaskCfg   *ability_task_config.TaskConfig `yaml:"task_cfg" json:"task_cfg" toml:"task_cfg" comment:"Async task worker configurations"`
+	PolicyCfg *policy_config.PolicyConfig     `yaml:"policy_cfg" json:"policy_cfg" toml:"policy_cfg" comment:"Maintenance scheduling configurations"`
 }
 
 func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
@@ -179,6 +183,8 @@ func LoadConfig(file string) error {
 		return decodeErr
 	}
 	api_auth_config.CurrentCfgAuth = GlobalConfig.AuthCfg
+	ability_task_config.CurrentCfgTask = GlobalConfig.TaskCfg
+	policy_config.CurrentCfgPolicy = GlobalConfig.PolicyCfg
 	return nil
 }
 
@@ -252,6 +258,12 @@ func generateDefaultConfig() *FileConfig {
 				Enabled: true,
 				Port:    aport + 4,
 			},
+		},
+		TaskCfg: &ability_task_config.TaskConfig{
+			WorkerCount: 0,
+		},
+		PolicyCfg: &policy_config.PolicyConfig{
+			PolicyDuration: "10s",
 		},
 		AuthCfg: &api_auth_config.AuthConfig{
 			Email: &api_auth_config.EmailConfig{

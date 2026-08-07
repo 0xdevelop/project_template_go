@@ -1,4 +1,4 @@
-// Package ability_user_model gcs_ability/ability_user/ability_user_model/ability_user_model.go
+// Package ability_user_model ability/ability_user/ability_user_model/ability_user_model.go
 package ability_user_model
 
 import (

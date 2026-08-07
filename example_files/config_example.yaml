@@ -23,6 +23,10 @@ api_cfg: # API configurations
   api_cfg_grpc: # API configurations with gRPC
     enabled: true
     port: 13005
+task_cfg: # Async task worker configurations
+  worker_count: 0 # 0 = 自动取 CPU 核数
+policy_cfg: # Maintenance scheduling configurations
+  policy_duration: "10s" # 定期轮询事项执行完一次到下一次的间隔，Go duration 字符串
 auth_cfg: # Auth configurations
   email: # Email delivery configuration
     provider: "resend"
