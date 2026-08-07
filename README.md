@@ -51,10 +51,11 @@ project_template_go
 │   ├── api_mcp                MCP 接入（官方 Go SDK，协议 2026-07-28）
 │   ├── api_websocket          WebSocket 接入并写回原 connection
 │   ├── api_grpc               单一 APIService.Call RPC（proto 源 + 生成物分目录）
-│   ├── api_executer           唯一业务执行入口，统一提取与编解码
-│   ├── api_supported_methods  方法描述、Execute 与有序目录（文档唯一事实源）
+│   ├── api_executer           唯一业务执行入口，统一提取、编解码与准入门禁（非 Public 方法验 jwt_token）
+│   ├── api_supported_methods  方法描述、Execute、Public 标志与有序目录（文档唯一事实源）
+│   ├── api_auth               API 权限准入域：验证码、注册、登录、session/JWT、统一门禁（契约见 docs/ability_auth.md）
 │   └── api_error_code         通用业务错误码
-├── ability                    父包带子包装配；默认注册 test 方法
+├── ability                    父包带子包装配；默认注册 test 方法；ability_user 持 User model 与密码校验
 ├── db                         GlobalMysqlCtl 唯一 MySQL 入口 + AutoMigrate 登记
 ├── config                     ProjectName/Version/BundleID + YAML/JSON/TOML 配置装配
 ├── common                     信号处理、panic 兜底
@@ -66,6 +67,7 @@ project_template_go
 ### 关键约束（全文见 `AGENTS.md`）
 
 - `APIExecuter` 是唯一执行入口，不维护业务 `switch`；新增业务方法只在 Ability 子包注册并由直属父包加载。
+- 统一准入门禁：非 `Public` 方法 Execute 前经 `api_auth_session` 验证 `arguments.jwt_token`，身份经 context 下传；`ability` 树内零鉴权代码（Auth/User 契约见 [`docs/ability_auth.md`](docs/ability_auth.md) / [`docs/ability_user.md`](docs/ability_user.md)）。
 - 业务失败统一 `CallToolResult`（HTTP 200 + `isError=true`）；协议错误只留给外壳损坏与服务故障。
 - `docs/api_methods.md` 由 `./gen_api_docs.sh` 从方法注册表生成；对外文档仅 `GET /docs_api` 单页（服务端注入）。
 - proto 只由 `./gen_proto.sh` 生成；发版走 `./git_tag.sh`（自动刷新方法文档与 changelog）。

@@ -1,48 +1,45 @@
+mysql_cfg: # Mysql configurations
+  dbname: "project_template_go"
+  dbuser: "project_template_go"
+  dbpwd: "project_template_go_pwd"
+  dbaddress: "127.0.0.1"
+  dbport: "3306"
+  dbtimezone: 0
 api_cfg: # API configurations
-  enabled: true
-  port: 12095
-  apis:
-  - api_path: test_rpc
+  api_cfg_jsonRPC: # API configurations with JSON-RPC
     enabled: true
-    address: http://127.0.0.1:9332
-    authenabled: true
-    user: testuser
-    pwd: testuserpwd
-  - api_path: test_rpc_02
+    port: 13001
+    encryption_enabled: false
+  api_cfg_mcp: # API configurations with MCP
     enabled: true
-    address: http://127.0.0.1:8332
-    authenabled: true
-    user: testuser
-    pwd: testuserpwd
-  client_timeout: 10s
-  permissions:
-    default:
-      permission_tag: default
-      encryption_enabled: true
-      allowed_uas: []
-      allowed_methods:
-      - test
-    test_a:
-      permission_tag: test_a
-      encryption_enabled: false
-      allowed_uas: []
-      allowed_methods:
-      - test_a_method_01
-      - test_a_method_02
-      - test_a_method_03
-    test_b:
-      permission_tag: test_b
-      encryption_enabled: true
-      allowed_uas: []
-      allowed_methods:
-      - test_b_method_01
-      - test_b_method_02
-      - test_b_method_03
-    test_c:
-      permission_tag: test_c
-      encryption_enabled: true
-      allowed_uas: []
-      allowed_methods: []
-auth:
-  username: ""
-  password: ""
+    port: 13002
+    mcp_transport_type: "streamable-http"
+  api_cfg_websocket: # API configurations with WebSocket
+    enabled: true
+    port: 13004
+    allowed_origins:
+    - "127.0.0.1:*"
+    - "localhost:*"
+  api_cfg_grpc: # API configurations with gRPC
+    enabled: true
+    port: 13005
+auth_cfg: # Auth configurations
+  email: # Email delivery configuration
+    provider: "resend"
+    api_key: ""
+    from: ""
+    reply_to: ""
+    product_name: "project_template_go"
+    verification_subject: "project_template_go verification code"
+  verification: # Verification code policy
+    code_ttl_seconds: 600
+    max_attempts: 5
+    resend_interval_seconds: 60
+    hourly_send_limit: 5
+    code_hash_secret: "dev_local_code_hash_secret_0123456789"
+  session: # JWT and refresh session policy
+    jwt_signing_secret: "dev_local_jwt_signing_secret_0123456789"
+    issuer: "project_template_go"
+    audience: "project_template_go"
+    access_token_ttl_seconds: 900
+    refresh_token_ttl_seconds: 2592000

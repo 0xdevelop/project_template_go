@@ -35,6 +35,15 @@
 - `docs/` 文档需要网页呈现时统一走既定模式：文档本体留在 `docs/` 作唯一事实源，对外文档经 `docs` 包 `//go:embed` 随二进制发布；test_ui 现有 mux 挂单页路由，文档内容由服务端注入页面（dev 优先读磁盘、离仓回落 embed），不设任何原始文件路由。失败路径与未匹配路径统一 `HomeHandler` 中性空响应，不输出任何提示。不新增 HTTP 服务、不复制文档、不引入 Python 或额外构建步骤。
 - 项目根目录 `tmp/` 只存放可再生成的缓存、中间产物和临时探针，允许随时整体删除。正式源码、配置事实和续做所需状态不得依赖 `tmp/` 中的内容。
 
+## Auth 准入域与统一门禁
+
+- Auth 是 API 准入域，实现整体位于 `api/api_auth`（子包 `api_auth_verify_code` / `api_auth_register` / `api_auth_session` / `api_auth_common` / `api_auth_config` / `api_auth_model`），负责验证码、注册/登录认证编排、session/JWT、刷新和退出；`ability` 树内不得出现鉴权/准入代码。
+- APIExecuter 内置统一准入门禁：非 `Public` 注册方法在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证 `arguments.jwt_token`，身份经 context 下传，业务方法用 `api_auth_session.AuthenticatedUser(ctx)` 读取，不得自行鉴权。`SupportedMethod.Public` 零值为受保护（fail-closed），仅 `test`、验证码、注册、登录、refresh 显式标记 `Public: true`。
+- api 层（协议 Adapter、APIExecuter、准入门禁、`api_auth` 域）定型后不再随业务演进修改；新增功能一律进 `ability` 业务子包。契约明记的既有例外：`SupportedMethod.Async` 受理语义的一次性接入，与 `ability_user_profile` 的顶层装配（profile 依赖父包 `ability_user` 数据方法，父包带子包装配会成 import 环）。
+- Auth 需要用户身份或校验密码时必须调用 `ability_user` 的方法，不得直接查询、创建或更新 User model；注册事务把当前 GORM transaction 传给 User 方法，User 方法不得另开事务。
+- 邮件发送供应商由 Auth `email` 配置的 `provider` 字段选择，当前仅支持 `resend`（官方 Go SDK）；`api_key`、`from`、`product_name`、`verification_subject` 等均为强配置，缺失或非法在配置加载层显式拒绝并输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 键路径，敏感字段只报名不报值），不在业务代码里兜默认值。
+- 密码、验证码、session/token 等敏感值不得明文落库或写日志。唯一例外：Debug 运行模式下验证码明文可写 Debug 日志供本地联调，Release/Test 模式禁止。认证失败响应不得泄露邮箱或手机号是否存在。
+
 ## MySQL 与 GORM
 
 - `db.GlobalMysqlCtl` 是项目唯一 MySQL 入口。它由 `main.go` 使用 `gtbox_orm_mysql.Instance()` 初始化，并在连接成功后才启动 API 服务。

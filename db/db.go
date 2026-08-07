@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/0xYeah/project_template_go/ability/ability_user/ability_user_model"
+	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_model"
 	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_mysql"
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
@@ -32,5 +34,9 @@ func MysqlAutoMigrate() error {
 	if err != nil {
 		return err
 	}
-	return db.AutoMigrate()
+	return db.AutoMigrate(
+		&ability_user_model.User{},
+		&api_auth_model.AuthVerifyCode{},
+		&api_auth_model.AuthSession{},
+	)
 }

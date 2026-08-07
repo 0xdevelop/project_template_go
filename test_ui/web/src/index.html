@@ -37,6 +37,15 @@
 
         <div class="test-account" aria-label="默认测试账号">
           <span class="test-account-label">TEST ACCOUNT</span>
+          <label for="test-user-name">用户名</label>
+          <input
+            id="test-user-name"
+            name="test-user-name"
+            type="text"
+            value="testuser"
+            autocomplete="off"
+            spellcheck="false"
+          />
           <label for="test-email">邮箱</label>
           <input
             id="test-email"
@@ -46,14 +55,23 @@
             autocomplete="off"
             spellcheck="false"
           />
+          <label for="test-phone">手机号</label>
+          <input
+            id="test-phone"
+            name="test-phone"
+            type="tel"
+            value="+8613800000000"
+            autocomplete="off"
+            spellcheck="false"
+          />
           <label for="test-password">密码</label>
           <input
             id="test-password"
             name="test-password"
             type="password"
-            value="00000000"
+            value="test_password_001"
             autocomplete="off"
-            title="注册新账号要求密码至少 15 个字符；此默认值适用于已有测试账号"
+            title="注册要求密码至少 15 个字符"
           />
         </div>
 

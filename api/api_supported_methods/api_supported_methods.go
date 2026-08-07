@@ -9,7 +9,10 @@ type SupportedMethod struct {
 	Description string
 	InputSchema map[string]interface{}
 	Async       bool
-	Execute     func(context.Context, interface{}) (interface{}, error)
+	// Public 为 true 的方法免统一准入门禁（如 test、验证码、注册、登录）；
+	// 零值 false = 受保护，APIExecuter 在 Execute 前验证 arguments.jwt_token（fail-closed）。
+	Public  bool
+	Execute func(context.Context, interface{}) (interface{}, error)
 }
 
 var currentSupportedMethods []*SupportedMethod

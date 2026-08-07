@@ -1,6 +1,6 @@
 # API 方法清单
 
-> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.9，共 1 个方法），禁止手改；新增方法后重新执行生成。
+> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.9，共 12 个方法），禁止手改；新增方法后重新执行生成。
 
 ## 统一调用方式
 
@@ -47,6 +47,323 @@
 ```json
 {
   "additionalProperties": false,
+  "type": "object"
+}
+```
+
+## auth.verify_code.send.email
+
+发送邮箱验证码
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "email": {
+      "format": "email",
+      "maxLength": 320,
+      "minLength": 3,
+      "type": "string"
+    }
+  },
+  "required": [
+    "email"
+  ],
+  "type": "object"
+}
+```
+
+## auth.verify_code.check.email
+
+检查邮箱验证码
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "email": {
+      "format": "email",
+      "maxLength": 320,
+      "minLength": 3,
+      "type": "string"
+    },
+    "verify_code": {
+      "pattern": "^[0-9]{6}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "email",
+    "verify_code"
+  ],
+  "type": "object"
+}
+```
+
+## auth.verify_code.send.sms
+
+发送短信验证码（暂不支持）
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "phone": {
+      "pattern": "^\\+[1-9][0-9]{7,14}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "phone"
+  ],
+  "type": "object"
+}
+```
+
+## auth.verify_code.check.sms
+
+检查短信验证码（暂不支持）
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "phone": {
+      "pattern": "^\\+[1-9][0-9]{7,14}$",
+      "type": "string"
+    },
+    "verify_code": {
+      "pattern": "^[0-9]{6}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "phone",
+    "verify_code"
+  ],
+  "type": "object"
+}
+```
+
+## auth.register
+
+使用邮箱验证码注册账户；user_name 为注册必填主标识
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "email": {
+      "format": "email",
+      "maxLength": 320,
+      "minLength": 3,
+      "type": "string"
+    },
+    "password": {
+      "maxLength": 128,
+      "minLength": 15,
+      "type": "string"
+    },
+    "user_name": {
+      "maxLength": 32,
+      "minLength": 3,
+      "type": "string"
+    },
+    "verify_code": {
+      "pattern": "^[0-9]{6}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_name",
+    "email",
+    "password",
+    "verify_code"
+  ],
+  "type": "object"
+}
+```
+
+## auth.login.email
+
+使用邮箱登录
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "email": {
+      "format": "email",
+      "maxLength": 320,
+      "minLength": 3,
+      "type": "string"
+    },
+    "login_method": {
+      "enum": [
+        "password"
+      ],
+      "type": "string"
+    },
+    "password": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "login_method",
+    "email",
+    "password"
+  ],
+  "type": "object"
+}
+```
+
+## auth.login.phone
+
+使用手机号登录
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "login_method": {
+      "enum": [
+        "password",
+        "verify_code"
+      ],
+      "type": "string"
+    },
+    "password": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "phone": {
+      "pattern": "^\\+[1-9][0-9]{7,14}$",
+      "type": "string"
+    },
+    "verify_code": {
+      "pattern": "^[0-9]{6}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "login_method",
+    "phone"
+  ],
+  "type": "object"
+}
+```
+
+## auth.logout
+
+撤销当前登录状态
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "jwt_token"
+  ],
+  "type": "object"
+}
+```
+
+## auth.jwt_token.check
+
+检查 JWT token 并返回当前身份
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "jwt_token"
+  ],
+  "type": "object"
+}
+```
+
+## auth.jwt_token.refresh
+
+轮换 refresh token 并签发新 JWT token
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "refresh_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "refresh_token"
+  ],
+  "type": "object"
+}
+```
+
+## user.nickname.change
+
+修改当前用户昵称
+
+`arguments` JSON Schema：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    },
+    "nick_name": {
+      "maxLength": 32,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "jwt_token",
+    "nick_name"
+  ],
   "type": "object"
 }
 ```

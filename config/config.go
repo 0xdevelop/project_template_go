@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_config"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -34,8 +35,9 @@ var (
 )
 
 type FileConfig struct {
-	MysqlCfg *db_config.MysqlConfig          `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg" comment:"Mysql configurations"`
-	ApiCfg   *api_config.ApiConfig               `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
+	MysqlCfg *db_config.MysqlConfig      `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg" comment:"Mysql configurations"`
+	ApiCfg   *api_config.ApiConfig       `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
+	AuthCfg  *api_auth_config.AuthConfig `yaml:"auth_cfg" json:"auth_cfg" toml:"auth_cfg" comment:"Auth configurations"`
 }
 
 func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
@@ -176,6 +178,7 @@ func LoadConfig(file string) error {
 	if decodeErr != nil {
 		return decodeErr
 	}
+	api_auth_config.CurrentCfgAuth = GlobalConfig.AuthCfg
 	return nil
 }
 
@@ -248,6 +251,25 @@ func generateDefaultConfig() *FileConfig {
 			APICfgGRPC: &api_config_grpc.APIConfigGRPC{
 				Enabled: true,
 				Port:    aport + 4,
+			},
+		},
+		AuthCfg: &api_auth_config.AuthConfig{
+			Email: &api_auth_config.EmailConfig{
+				Provider:            api_auth_config.EmailProviderResend,
+				ProductName:         ProjectName,
+				VerificationSubject: ProjectName + " verification code",
+			},
+			Verification: &api_auth_config.VerificationConfig{
+				CodeTTLSeconds:        10 * 60,
+				MaxAttempts:           5,
+				ResendIntervalSeconds: 60,
+				HourlySendLimit:       5,
+			},
+			Session: &api_auth_config.SessionConfig{
+				Issuer:                 ProjectName,
+				Audience:               ProjectName,
+				AccessTokenTTLSeconds:  15 * 60,
+				RefreshTokenTTLSeconds: 30 * 24 * 60 * 60,
 			},
 		},
 	}

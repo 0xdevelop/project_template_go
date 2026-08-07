@@ -206,7 +206,12 @@ pre:focus-visible {
 
 .test-account {
   display: grid;
-  grid-template-columns: auto auto minmax(150px, 210px) auto minmax(96px, 135px);
+  grid-template-columns:
+    auto
+    auto minmax(80px, 120px)
+    auto minmax(140px, 200px)
+    auto minmax(104px, 148px)
+    auto minmax(96px, 135px);
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -1375,7 +1380,11 @@ kbd {
   }
 
   .test-account {
-    grid-template-columns: auto minmax(140px, 1fr) auto minmax(90px, 120px);
+    grid-template-columns:
+      auto minmax(70px, 100px)
+      auto minmax(120px, 1fr)
+      auto minmax(96px, 130px)
+      auto minmax(90px, 120px);
   }
 }
 

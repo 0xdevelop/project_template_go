@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/0xYeah/project_template_go/api"
-	"github.com/0xYeah/project_template_go/custom_cmd"
 	"github.com/0xYeah/project_template_go/common"
 	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xYeah/project_template_go/custom_cmd"
 	"github.com/0xYeah/project_template_go/db"
 	"github.com/0xYeah/project_template_go/test_ui"
 	"github.com/george012/gtbox"

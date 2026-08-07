@@ -76,7 +76,9 @@ const requestIDInput = byId<HTMLInputElement>("request-id");
 const requestBody = byId<HTMLTextAreaElement>("request-body");
 const requestHeaders = byId<HTMLTextAreaElement>("request-headers");
 const requestError = byId<HTMLParagraphElement>("request-error");
+const testUserNameInput = byId<HTMLInputElement>("test-user-name");
 const testEmailInput = byId<HTMLInputElement>("test-email");
+const testPhoneInput = byId<HTMLInputElement>("test-phone");
 const testPasswordInput = byId<HTMLInputElement>("test-password");
 const catalogCount = byId<HTMLElement>("catalog-count");
 const codeMethodLabel = byId<HTMLElement>("code-method-label");
@@ -301,8 +303,14 @@ function paramsFromSchema(
   const value = valueFromSchema(schema);
   if (value !== null && !Array.isArray(value) && typeof value === "object") {
     const params = value as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(params, "user_name")) {
+      params.user_name = testUserNameInput.value;
+    }
     if (Object.prototype.hasOwnProperty.call(params, "email")) {
       params.email = testEmailInput.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(params, "phone")) {
+      params.phone = testPhoneInput.value;
     }
     if (Object.prototype.hasOwnProperty.call(params, "password")) {
       params.password = testPasswordInput.value;
@@ -494,8 +502,14 @@ function syncTestAccountToRequest(): void {
       return;
     }
     const argumentsObject = argumentsValue as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(argumentsObject, "user_name")) {
+      argumentsObject.user_name = testUserNameInput.value;
+    }
     if (Object.prototype.hasOwnProperty.call(argumentsObject, "email")) {
       argumentsObject.email = testEmailInput.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(argumentsObject, "phone")) {
+      argumentsObject.phone = testPhoneInput.value;
     }
     if (Object.prototype.hasOwnProperty.call(argumentsObject, "password")) {
       argumentsObject.password = testPasswordInput.value;
@@ -811,7 +825,7 @@ function buildCommand(): string {
     const endpoint = endpointInput.value.replace(/^grpc:\/\//, "");
     return [
       "grpcurl -plaintext",
-      "-import-path api/api_grpc/proto",
+      "-import-path gcs_api/api_grpc/proto",
       "-proto api.proto",
       `-d ${shellQuote(requestBody.value)}`,
       shellQuote(endpoint),
@@ -1021,7 +1035,7 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 
 export async function call${functionName}(): Promise<unknown> {
-  const definition = protoLoader.loadSync("api/api_grpc/proto/api.proto", {
+  const definition = protoLoader.loadSync("gcs_api/api_grpc/proto/api.proto", {
     keepCase: false,
     longs: String,
     enums: String,
@@ -1485,7 +1499,9 @@ requestHeaders.addEventListener("input", () => {
   renderInvocationCode();
 });
 endpointInput.addEventListener("input", renderInvocationCode);
+testUserNameInput.addEventListener("input", syncTestAccountToRequest);
 testEmailInput.addEventListener("input", syncTestAccountToRequest);
+testPhoneInput.addEventListener("input", syncTestAccountToRequest);
 testPasswordInput.addEventListener("input", syncTestAccountToRequest);
 byId<HTMLButtonElement>("format-request").addEventListener("click", () => {
   formatJSON(requestBody, "Request body");

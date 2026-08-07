@@ -10,6 +10,7 @@ const (
 	MethodNotSupported       = 10002
 	InvalidArguments         = 10003
 	PermissionDenied         = 10004
+	VerifyCodeDeliveryFailed = 10005
 )
 
 type Error struct {
@@ -45,5 +46,9 @@ var (
 	ErrPermissionDenied = &Error{
 		Code:    PermissionDenied,
 		Message: "permission denied",
+	}
+	ErrVerifyCodeDeliveryFailed = &Error{
+		Code:    VerifyCodeDeliveryFailed,
+		Message: "verification code delivery failed",
 	}
 )

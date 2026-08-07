@@ -6,7 +6,11 @@ require (
 	github.com/george012/gtbox v0.1.113
 	github.com/goccy/go-json v0.10.6
 	github.com/goccy/go-yaml v1.19.2
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
+	github.com/resend/resend-go/v3 v3.12.0
+	golang.org/x/crypto v0.52.0
 )
 
 require (

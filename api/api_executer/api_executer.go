@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xYeah/project_template_go/api/api_error_code"
 	"github.com/0xYeah/project_template_go/api/api_supported_methods"
 	"github.com/george012/gtbox/gtbox_log"
@@ -36,6 +37,11 @@ func APIExecuter(ctx context.Context, method string, params interface{}, encrypt
 	supportedMethod, ok := api_supported_methods.Method(methodName)
 	if !ok {
 		return finish(nil, ErrMethodNotFound, encryptionKey)
+	}
+	if !supportedMethod.Public {
+		if ctx, err = api_auth_session.AuthenticateRequest(ctx, abilityParams); err != nil {
+			return finish(nil, err, encryptionKey)
+		}
 	}
 	value, err := supportedMethod.Execute(ctx, abilityParams)
 	return finish(value, err, encryptionKey)
