@@ -6,7 +6,7 @@
 
 Task 域负责异步长任务的持久状态、统一受理、后台执行与查询。MySQL 任务记录是唯一真相源，不使用内存 channel、请求 goroutine 或连接存活状态冒充可恢复任务池。运行前提：MySQL 8.0+（认领依赖 `FOR UPDATE SKIP LOCKED`）。
 
-`SupportedMethod.Async` 只由后端方法注册设置，默认同步。受理统一收口在 `APIExecuter`（契约预留的一次性接入，已完成）：门禁通过后读取 `Async` 标识，经 `ability_task.AcceptAsyncTask` 事务写入任务记录并立即返回 `task_id`；Worker 后续按方法名调用**同一注册项的同一个 `Execute`**。`Execute` 保持纯业务工作函数，各方法不得自写受理。
+`SupportedMethod.Async` 只由后端方法注册设置，默认同步。受理统一收口在 `APIExecuter`：门禁通过后读取 `Async` 标识，经 `ability_task.AcceptAsyncTask` 写入持久化排队区并立即返回 `task_id`；Policy 后续按空闲名额认领任务，并按方法名调用**同一注册项的同一个 `Execute`**。`Execute` 保持纯业务工作函数，各方法不得自写受理。
 
 ## 调用流转
 
@@ -17,7 +17,7 @@ flowchart LR
         Adapter --> Gate["APIExecuter 门禁"]
         Gate --> AsyncCheck{"Async 方法？"}
         AsyncCheck -- 否 --> Exec["Execute 同步执行"]
-        AsyncCheck -- 是 --> Accept["AcceptAsyncTask：背压校验 + 事务写任务记录"]
+        AsyncCheck -- 是 --> Accept["AcceptAsyncTask：写入持久化排队区"]
         Accept --> TaskID["返回 { task_id }"]
     end
     subgraph 执行["执行（后台 Worker，policy 拉起）"]
@@ -64,14 +64,14 @@ stateDiagram-v2
 ## 高并发纪律
 
 - **认领**：事务内 `SELECT ... WHERE run_status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED` → 置 `running` → 提交后才执行。多 Worker 零踩踏，同一任务不可能被认领两次。
-- **Worker 并发**：`task_cfg.worker_count` 配置（0/缺省 = CPU 核数）；队列空时退避 1 秒。
-- **受理背压**：每用户在途（非 done）任务上限 100，超限拒收 `API_INVALID_ARGUMENTS`。
+- **Worker 并发**：由 Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 计算全局上限；每个 Worker 只认领并执行一条任务，完成后 goroutine 自然释放。
+- **排队区**：受理层不设人为的每用户在途数量上限；MySQL 任务记录承载排队，资源故障按正常数据库错误返回。
 - 普通状态查询读已提交快照不加锁；并发状态变更一律条件原子更新或行锁事务。共享瓶颈是全局 DB 连接池（Worker 与请求线程共用），池容量属部署参数。
 
 ## 执行语义
 
 - **任务身份快照**：Worker 把 `AsyncTaskInfo{TaskID, UserID}` 注入 context，业务 `Execute` 经 `AsyncTaskInfoFromContext` 读取——与门禁在线身份语义分离，异步执行不要求受理时的 session 仍存活。
-- **停止**：进程收到退出信号后 Worker 不再认领新任务，正在执行的任务跑完落终态再退（`policy` 优雅停止）。
+- **执行单元**：Policy 每轮只填充当前空闲名额，长任务持续占用其名额，下一轮不会重复扩容。
 - **未尽之事自愈（取代一次性启动恢复）**：`policy` 维护大循环每轮调 `RequeueOrphanedTasks`——DB `running` 且不在本进程 in-flight 执行集合的孤儿任务重置回 `queued` 拉起来继续。重启后第一轮即捞回全部死进程遗留；运行中意外孤儿同样自愈。防误拉：`claimQueuedTask` 在认领事务提交**前**登记 in-flight、任务落终态后移除——DB `running` 可见时执行记录必已存在，无误判窗口。**异步 `Execute` 必须幂等或自查重**——重跑兜底依赖此契约，责任归业务函数。
 - **单实例边界**：不做分布式认领/租约；多实例部署是将来的独立命题。
 - **载荷**：`input_payload`/`result_payload` 明文 JSON 存储；**敏感值（密码、token、密钥等）不得进入异步方法的 arguments 与结果**。持久化加密待真实敏感任务出现时另立契约。
@@ -90,8 +90,8 @@ task.cancel  { jwt_token, task_id }   受保护；仅 queued 可取消（原子�
 
 - [ ] 🟡 DONE — `SupportedMethod.Async` 受理一次性接入 `APIExecuter`（api 层就此封版）。
 - [ ] 🟡 DONE — 状态三字段（`run_status`/`process_status`/`progress`）落 model，枚举三处同步。
-- [ ] 🟡 DONE — `AcceptAsyncTask` 受理（背压 + 事务写入 + 身份快照）。
-- [ ] 🟡 DONE — Worker 池（SKIP LOCKED 认领、panic 归 system_error、优雅退出）经 `policy` 拉起。
+- [ ] 🟡 DONE — `AcceptAsyncTask` 受理（持久化排队 + 身份快照）。
+- [ ] 🟡 DONE — Policy 按 CPU 倍率填充执行名额（SKIP LOCKED 认领、临时 Worker、panic 归 system_error）。
 - [ ] 🟡 DONE — 未尽之事自愈：`RequeueOrphanedTasks` 经 `policy` 维护大循环每轮侦测（in-flight 防误拉）。
 - [ ] 🟡 DONE — `task.get` / `task.list` / `task.cancel` 带所有权校验接入统一调用链。
 - [ ] ⬜ TODO — 首个真实异步业务方法接入后完成受理→执行端到端验收（仓内禁造演示方法）。

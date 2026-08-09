@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xYeah/project_template_go/ability/ability_task/ability_task_config"
 	"github.com/0xYeah/project_template_go/ability/ability_task/ability_task_model"
 	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_common"
 	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_session"
@@ -44,10 +43,6 @@ const (
 	MethodTaskList   = "task.list"
 	MethodTaskCancel = "task.cancel"
 
-	// 每用户在途（queued+running）任务上限，受理背压。
-	activeTasksPerUserLimit = 100
-	// 任务队列空转时 Worker 退避间隔。
-	workerIdleBackoff = time.Second
 	// task.list 返回条数上限。
 	taskListLimit = 50
 )
@@ -123,7 +118,7 @@ func LoadAPIMethods() {
 	})
 }
 
-// AcceptAsyncTask 是 Async 方法的统一受理：事务内背压校验并写入任务记录，返回 task_id。
+// AcceptAsyncTask 是 Async 方法的统一受理：写入持久化排队区并返回 task_id。
 // 只由 APIExecuter 调用（AGENTS 预留的一次性接入）；身份取门禁 context 快照，无身份任务属主为 NULL。
 func AcceptAsyncTask(ctx context.Context, methodName string, abilityParams interface{}) (interface{}, error) {
 	inputJSON, err := json.Marshal(abilityParams)
@@ -146,27 +141,8 @@ func AcceptAsyncTask(ctx context.Context, methodName string, abilityParams inter
 		RunStatus:    RunStatusQueued,
 		InputPayload: string(inputJSON),
 	}
-	var outcomeErr error
-	err = db.Transaction(func(tx *gorm.DB) error {
-		if userID != nil {
-			var activeCount int64
-			if countErr := tx.Model(&ability_task_model.AsyncTask{}).
-				Where("user_id = ? AND run_status <> ?", *userID, RunStatusDone).
-				Count(&activeCount).Error; countErr != nil {
-				return countErr
-			}
-			if activeCount >= activeTasksPerUserLimit {
-				outcomeErr = api_error_code.ErrInvalidArguments
-				return nil
-			}
-		}
-		return tx.Create(task).Error
-	})
-	if err != nil {
+	if err = db.Create(task).Error; err != nil {
 		return nil, err
-	}
-	if outcomeErr != nil {
-		return nil, outcomeErr
 	}
 	return map[string]interface{}{
 		"task_id":    task.TaskID,
@@ -189,44 +165,15 @@ func AsyncTaskInfoFromContext(ctx context.Context) (*AsyncTaskInfo, bool) {
 	return info, ok && info != nil
 }
 
-// RunAsyncTaskWorkers 拉起 worker_count 个执行循环并阻塞至全部退出；作为 policy 长驻循环租户运行。
-// 停止语义：ctx 取消后不再认领新任务，正在执行的任务跑完落终态再退。
-func RunAsyncTaskWorkers(ctx context.Context) {
-	workerCount := ability_task_config.CurrentWorkerCount()
-	gtbox_log.LogInfof("async task workers starting: count=%d", workerCount)
-	var waitGroup sync.WaitGroup
-	for i := 0; i < workerCount; i++ {
-		waitGroup.Add(1)
-		go func(workerIndex int) {
-			defer waitGroup.Done()
-			asyncTaskWorkerLoop(ctx, workerIndex)
-		}(i)
+// ExecuteNextQueuedTask 从持久化排队区原子认领一条任务并执行。
+// 本方法是单次 Worker，由 Policy 按空闲名额异步调用；无排队任务时返回 false。
+func ExecuteNextQueuedTask(ctx context.Context) (bool, error) {
+	task, err := claimQueuedTask(ctx)
+	if err != nil || task == nil {
+		return false, err
 	}
-	waitGroup.Wait()
-	gtbox_log.LogInfof("async task workers stopped")
-}
-
-func asyncTaskWorkerLoop(ctx context.Context, workerIndex int) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		task, err := claimQueuedTask(ctx)
-		if err != nil {
-			gtbox_log.LogErrorf("async task worker[%d] claim failed: %v", workerIndex, err)
-		}
-		if task == nil {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(workerIdleBackoff):
-			}
-			continue
-		}
-		executeClaimedTask(ctx, task)
-	}
+	executeClaimedTask(ctx, task)
+	return true, nil
 }
 
 // claimQueuedTask 用 FOR UPDATE SKIP LOCKED 认领一条排队任务（高并发多 worker 零踩踏），无任务返回 nil。

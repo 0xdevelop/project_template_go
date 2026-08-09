@@ -1,44 +1,49 @@
 [← 返回 README](../README.md)
 
-# Policy 维护调度契约
+# Policy 统一调度契约
 
 ## 预期目的
 
-`policy` 是进程生命周期维护调度层：统一承载**重启后的未尽之事**（启动恢复）、**长驻循环**与**定期轮询**三类维护事项的拉起、停止与日志包裹。它解决的是「重启维护后很多事情都需要续起来」的通用问题——异步任务恢复只是首个租户，不与任何业务域耦合。
+`policy` 是统一策略调度域：周期从 MySQL 持久化排队区认领异步任务，限制全局同时执行数，并异步派发未尽之事恢复、周期清理等维护事项。Task 域只负责受理、持久状态与单条任务执行，不自建 Worker 池或轮询循环。
 
-## 形态（拍板定案：单入口，对齐 api_services）
+## 大循环
 
-对外只有两个方法——`PolicyServicesStart()` / `PolicyServicesStop()`（对齐 `api.StartAPIServices` / `StopApiServices` 形态），`main.go` 各一行调用。具体维护事项**封装在 policy 包内部**：policy 是维护调度域，它直接 import 各域的维护函数（同 api_services import ability 先例），层次为 main（启动编排）→ policy（维护域编排）→ 各域函数（具体逻辑）。
+`main.go` 在数据库迁移完成后以 goroutine 拉起阻塞式 `PolicyServicesStart()`。每轮执行：
 
-`PolicyServicesStart` 内部两件事：
+1. 读取最大执行数 `runtime.NumCPU() × policy_cfg.workers_scaller`。
+2. 扣除当前正在运行的长任务，仅按剩余空闲名额异步派发单次 Worker。
+3. 异步派发孤儿 `running` 任务恢复与验证码过期清理；不同维护任务互不阻塞，同一维护任务上轮未结束时跳过重复派发。
+4. 间隔 `policy_cfg.policy_duration` 后进入下一轮。
 
-1. **长驻执行域**（goroutine）：`ability_task.RunAsyncTaskWorkers`——Worker 池并发数由 `task_cfg.worker_count` 决定，节奏域内自管。
-2. **周期维护大循环**（单 goroutine）：每轮把内部方法清单各**单次执行**一遍 → 执行完间隔 `policy_cfg.policy_duration`（每轮现读现解，执行耗时不计入间隔、天然防重叠）→ 下一轮。当前清单：
-   - `ability_task.RequeueOrphanedTasks`——**侦测未尽之事**：DB `running` 且不在本进程 in-flight 执行集合的孤儿任务 → 重置 `queued` 拉起来继续。
-   - `api_auth_verify_code.PurgeExpired`——清理过期超 24h 的验证码行。
+Worker 不常驻、不空转：每个 Worker 只原子认领一条 `queued` 任务，执行完后释放 goroutine 与 Policy 计数名额。长任务跨越多轮时仍只占一个名额，不会因周期到达而重复执行或突破并发上限。
 
-**无特权启动阶段**：进程重启后第一轮循环时 in-flight 为空，死进程遗留的 running 自动全部捞回——启动恢复即第一轮循环的自然效果；运行中意外产生的孤儿同样每轮自愈。
+## 配置
 
-## 生命周期
-
-```mermaid
-flowchart LR
-    Boot["进程启动<br/>DB 连接 + AutoMigrate 成功"] --> Start["PolicyServicesStart()<br/>拉起 Worker 池 + 维护大循环"]
-    Start --> Serve["API 服务启动"]
-    Start -. 第一轮循环 .-> Heal["侦测未尽之事：孤儿 running → queued<br/>（启动恢复的自然效果）"]
-    Serve --> Signal["退出信号"]
-    Signal --> Stop["PolicyServicesStop()：ctx 取消<br/>各项跑完手头事项后收尾"]
-    Stop --> Exit["进程退出，无残留 goroutine"]
+```yaml
+policy_cfg:
+  policy_duration: "10s"
+  workers_scaller: 5
 ```
 
-## 纪律
+- `policy_duration`：两轮派发的间隔，缺省或非法时回落 `10s`。
+- `workers_scaller`：CPU 并发倍率，缺省或非法时回落 `1`。例如 2 CPU 配置 `5` 时最多同时执行 10 条异步任务。
 
-- 新增维护事项 = 对应域写一个普通导出函数 + policy 大循环清单加一行调用；`main.go` 永不再动。
-- 各域维护函数自含业务语义（恢复条件、清理窗口），policy 只管调度节奏、停止与统一日志（`policy maintenance [名称]` 前缀，运维按名 grep）。
-- 间隔配置 `policy_cfg.policy_duration`：Go duration 字符串（`"10s"`/`"1h"`），每轮循环**用时现解**；缺省或非法回落 10s 并输出字段级警告。
+## 重启续跑
+
+进程重启后第一轮时本地 in-flight 为空，`RequeueOrphanedTasks` 将死进程遗留的 `running` 任务恢复为 `queued`，后续由 Policy 再次认领。运行期间正常执行的任务记录在本进程 in-flight 中，不会被误恢复。
+
+进程无法从 Go 函数的中断指令处继续，因此恢复契约是按持久化输入重放。涉及远程服务的 `Execute` 必须持久化远程任务 ID/幂等键并自查续跑，避免重复创建远程任务。当前 in-flight 判定为单实例边界，多实例部署需增加数据库租约与执行实例标识。
+
+## 装配纪律
+
+- 新增周期事项 = 对应域提供一个单次函数 + Policy 大循环追加一次异步派发。
+- 单次函数不得自建周期死循环。
+- 需防重入的周期任务通过独立 `atomic.Bool` 守卫，不使用全局 `WaitGroup` 阻塞其他任务。
+- 普通 API 由协议服务、Go runtime、操作系统与数据库连接池承载，不受 Policy Worker 名额影响。
 
 ## 当前实现
 
-- [ ] 🟡 DONE — `PolicyServicesStart` / `PolicyServicesStop` 单入口接入 `main.go`（各一行）。
-- [ ] 🟡 DONE — 首批维护清单：孤儿任务侦测拉起（in-flight 防误拉）、Worker 池长驻、验证码过期清理。
+- [ ] 🟡 DONE — Policy 单大循环在 `main.go` 中异步拉起。
+- [ ] 🟡 DONE — CPU 倍率动态并发、持久化队列认领与临时 Worker 释放。
+- [ ] 🟡 DONE — 孤儿任务恢复、验证码过期清理异步防重入。
 - [ ] ⬜ TODO — done 任务归档/清理进大循环清单（保留窗口待拍板）。

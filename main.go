@@ -127,8 +127,8 @@ func main() {
 				}
 				gtbox_log.LogInfof("Mysql AutoMigrate completed")
 
-				// 维护调度域：长驻执行与周期维护大循环全部封装在 policy 内部
-				policy.PolicyServicesStart()
+				// 维护调度域是阻塞循环，与 API 服务并行运行
+				go policy.PolicyServicesStart()
 
 				if config.GlobalConfig.ApiCfg != nil {
 					api.StartAPIServices(config.GlobalConfig.ApiCfg)
@@ -144,7 +144,6 @@ func main() {
 	)
 	common.LoadSigHandle(func() {
 		api.StopApiServices()
-		policy.PolicyServicesStop()
 	}, nil)
 
 }

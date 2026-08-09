@@ -1,12 +1,10 @@
-// Package policy 是维护调度域：对外仅 PolicyServicesStart / PolicyServicesStop 两个方法
-// （对齐 api.StartAPIServices / StopApiServices 形态）。具体维护事项封装在本包内部：
-// 长驻执行域的拉起，以及周期大循环——每轮把维护方法清单各单次执行一遍（侦测未尽之事拉起来继续、
-// 周期清理等），执行完间隔 policy_cfg.policy_duration（每轮现读现解）进入下一轮。
+// Package policy 是统一策略调度域：周期从持久化排队区认领异步任务，
+// 按 CPU 倍率限制全局执行数，并异步派发各项周期维护任务。
 package policy
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/0xYeah/project_template_go/ability/ability_task"
@@ -16,59 +14,57 @@ import (
 )
 
 var (
-	policyCancel    context.CancelFunc
-	policyWaitGroup sync.WaitGroup
+	runningWorkers atomic.Int64
+	requeueRunning atomic.Bool
+	purgeRunning   atomic.Bool
 )
 
-// PolicyServicesStart 启动维护调度：拉起长驻执行域与周期维护大循环。
-// 未尽之事（如死进程遗留的 running 任务）由大循环每轮侦测自愈——启动恢复即第一轮循环的自然效果，
-// 不设特权启动阶段。main 只需调用本方法与 PolicyServicesStop。
+// PolicyServicesStart 运行维护调度大循环。本方法持续阻塞，由 main 以 goroutine 拉起。
+// 每轮将所有定期任务异步派发，各任务互不阻塞。
 func PolicyServicesStart() {
-	ctx, cancel := context.WithCancel(context.Background())
-	policyCancel = cancel
+	ctx := context.Background()
 
-	// 长驻执行域：异步任务 Worker 池（并发数由 task_cfg.worker_count 决定，域内自管）
-	policyWaitGroup.Add(1)
-	go func() {
-		defer policyWaitGroup.Done()
-		ability_task.RunAsyncTaskWorkers(ctx)
-	}()
+	gtbox_log.LogInfof("policy maintenance loop started")
+	for {
+		dispatchQueuedTasks(ctx)
 
-	// 周期维护大循环：每轮单次执行清单内各维护方法，执行完间隔 policy_duration 进下一轮
-	policyWaitGroup.Add(1)
-	go func() {
-		defer policyWaitGroup.Done()
-		gtbox_log.LogInfof("policy maintenance loop started")
-		for {
-			runMaintenanceOnce(ctx)
-			select {
-			case <-ctx.Done():
-				gtbox_log.LogInfof("policy maintenance loop exited")
-				return
-			case <-time.After(policy_config.CurrentPolicyDuration()):
+		runOnceAsync(&requeueRunning, func() {
+			if err := ability_task.RequeueOrphanedTasks(ctx); err != nil {
+				gtbox_log.LogErrorf("policy maintenance [async_task_requeue] failed: %v", err)
 			}
-		}
-	}()
-}
+		})
 
-// runMaintenanceOnce 单次执行维护方法清单；新增维护事项在此追加一行，main 与循环骨架不动。
-func runMaintenanceOnce(ctx context.Context) {
-	// 未尽之事侦测：DB running 且不在本进程执行中的孤儿任务 → 重置 queued 拉起来继续
-	if err := ability_task.RequeueOrphanedTasks(ctx); err != nil {
-		gtbox_log.LogErrorf("policy maintenance [async_task_requeue] failed: %v", err)
-	}
-	// 周期清理：过期超保留窗口的验证码行
-	if err := api_auth_verify_code.PurgeExpired(ctx); err != nil {
-		gtbox_log.LogErrorf("policy maintenance [auth_verify_code_purge] failed: %v", err)
+		runOnceAsync(&purgeRunning, func() {
+			if err := api_auth_verify_code.PurgeExpired(ctx); err != nil {
+				gtbox_log.LogErrorf("policy maintenance [auth_verify_code_purge] failed: %v", err)
+			}
+		})
+
+		time.Sleep(policy_config.CurrentPolicyDuration())
 	}
 }
 
-// PolicyServicesStop 优雅停止维护调度：通知退出并等待长驻执行域与大循环跑完手头事项收尾。
-func PolicyServicesStop() {
-	if policyCancel == nil {
+// dispatchQueuedTasks 按当前空闲名额派发单次 Worker；Worker 执行完自然释放，不常驻、不空转。
+func dispatchQueuedTasks(ctx context.Context) {
+	available := int64(policy_config.CurrentMaxWorkers()) - runningWorkers.Load()
+	for i := int64(0); i < available; i++ {
+		runningWorkers.Add(1)
+		go func() {
+			defer runningWorkers.Add(-1)
+			if _, err := ability_task.ExecuteNextQueuedTask(ctx); err != nil {
+				gtbox_log.LogErrorf("policy async task dispatch failed: %v", err)
+			}
+		}()
+	}
+}
+
+// runOnceAsync 使不同维护任务异步互不阻塞，同一任务上一轮未结束时不重复派发。
+func runOnceAsync(running *atomic.Bool, task func()) {
+	if !running.CompareAndSwap(false, true) {
 		return
 	}
-	policyCancel()
-	policyWaitGroup.Wait()
-	gtbox_log.LogInfof("policy services stopped")
+	go func() {
+		defer running.Store(false)
+		task()
+	}()
 }

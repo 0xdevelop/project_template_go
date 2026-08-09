@@ -115,7 +115,7 @@ type SupportedMethod struct {
 
 `InputSchema` 只用于 MCP `tools/list` 描述 `arguments`，不是 Ability 的业务执行参数。
 
-`Async` 是后端注册方法时设置的执行语义，不属于前端参数，也不进入 `InputSchema`。默认值 `false` 继续同步调用 `Execute`；长任务设为 `true` 后应先持久化任务并返回 `task_id`，再由 Worker 按方法名查回同一个 `Execute`。当前只建立字段、Task Model 和并发更新样例，异步受理、Worker 与查询方法尚未接入，不得把该骨架描述成可用的异步主流程。
+`Async` 是后端注册方法时设置的执行语义，不属于前端参数，也不进入 `InputSchema`。默认值 `false` 同步调用 `Execute`；长任务设为 `true` 后由统一受理将输入写入 MySQL 持久化排队区并立即返回 `task_id`，Policy 再按空闲执行名额认领任务，并按方法名查回同一个 `Execute`。调用方通过 `task.get` / `task.list` 查询状态与结果，排队中任务可通过 `task.cancel` 取消。
 
 `APIExecuter` 是唯一执行入口，但不维护业务 `switch`。它统一从外层 `method`、`params` 提取业务方法名和 `arguments`，完成可选编解码后，从有序方法目录取得注册项并调用该项的 `Execute`。方法描述和执行函数不得再维护两份映射。
 
