@@ -1,10 +1,15 @@
 #!/bin/bash
 set -e
 
-product_name=$(grep ProjectName ./config/config.go | awk -F '"' '{print $2}' | sed 's/\"//g')
+product_name=$(sed -nE 's/^[[:space:]]*ProjectName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' ./config/config.go | head -n1)
 Product_version_key="ProjectVersion"
 VersionFile=./config/config.go
-CURRENT_VERSION=$(grep ${Product_version_key} $VersionFile | awk -F '"' '{print $2}' | sed 's/\"//g')
+CURRENT_VERSION=$(sed -nE "s/^[[:space:]]*${Product_version_key}[[:space:]]*=[[:space:]]*\"([^\"]+)\".*/\\1/p" "$VersionFile" | head -n1)
+
+if [[ -z "$product_name" || -z "$CURRENT_VERSION" ]]; then
+    echo "failed to read ProjectName or ProjectVersion from ${VersionFile}" >&2
+    exit 1
+fi
 
 build_path=./build
 RUN_MODE=release
@@ -106,4 +111,3 @@ function handlerunMode() {
 
 
 handlerunMode "$1" && toBuild
-
