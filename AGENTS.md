@@ -60,7 +60,7 @@
 - `SupportedMethod.Async` 受理已按预留契约一次性接入 `APIExecuter`（门禁后调 `ability_task.AcceptAsyncTask` 写入持久化排队区并返回 `task_id`）；至此 api 层封版，后续任何业务演进不得再修改 `APIExecuter`。
 - 任务状态三字段分层：程序级 `run_status`（queued/running/done，done 唯一终态）、业务级 `process_status`（空/success/failed/cancelled/system_error）、量化 `progress`。两层值域零交集；枚举值在 Go 常量、model 列 comment、`docs/ability_task.md` 三处同步维护，改一处必改三处。
 - Worker 认领一律 `FOR UPDATE SKIP LOCKED`（MySQL 8.0+）；异步 `Execute` 必须幂等或自查重（重启恢复重跑的兜底契约）；任务载荷明文 JSON 存储，敏感值不得进入异步方法 arguments 与结果。
-- `policy` 是统一调度域：`main.go` 以 goroutine 拉起唯一阻塞式 `PolicyServicesStart` 大循环；每轮按 `runtime.NumCPU() × policy_cfg.workers_scaller` 扣除正在执行数，仅以剩余名额从持久化排队区派发单次 Worker。Worker 不常驻、不空转，一次只执行一条任务并在完成后自然释放；长任务跨轮持续占用原名额，不得重复扩容。其他维护事项异步互不阻塞，同类事项必须防重入；单次域函数不得自建周期死循环。重启遗留 `running` 任务由第一轮 `RequeueOrphanedTasks` 自然捞回，远程任务的 `Execute` 必须依靠持久化远程 ID/幂等键自查续跑。
+- `policy` 是统一调度域：`main.go` 调用 `PolicyServicesStart`，由该方法封装并拉起唯一内部大循环；每轮按 `runtime.NumCPU() × policy_cfg.workers_scaller` 扣除正在执行数，仅以剩余名额从持久化排队区派发单次 Worker。Worker 不常驻、不空转，一次只执行一条任务并在完成后自然释放；长任务跨轮持续占用原名额，不得重复扩容。其他维护事项异步互不阻塞，同类事项必须防重入；单次域函数不得自建周期死循环。重启遗留 `running` 任务由第一轮 `RequeueOrphanedTasks` 自然捞回，远程任务的 `Execute` 必须依靠持久化远程 ID/幂等键自查续跑。
 
 ## 工具与测试纪律
 

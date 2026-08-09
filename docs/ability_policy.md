@@ -1,4 +1,4 @@
-[← 返回 README](../README.md)
+﻿[← 返回 README](../README.md)
 
 # Policy 统一调度契约
 
@@ -8,7 +8,7 @@
 
 ## 大循环
 
-`main.go` 在数据库迁移完成后以 goroutine 拉起阻塞式 `PolicyServicesStart()`。每轮执行：
+`main.go` 在数据库迁移完成后调用 `PolicyServicesStart()`；该方法拉起内部 goroutine 后立即返回，由内部大循环每轮执行：
 
 1. 读取最大执行数 `runtime.NumCPU() × policy_cfg.workers_scaller`。
 2. 扣除当前正在运行的长任务，仅按剩余空闲名额异步派发单次 Worker。
@@ -43,7 +43,7 @@ policy_cfg:
 
 ## 当前实现
 
-- [ ] 🟡 DONE — Policy 单大循环在 `main.go` 中异步拉起。
+- [ ] 🟡 DONE — `PolicyServicesStart` 封装并拉起唯一内部大循环。
 - [ ] 🟡 DONE — CPU 倍率动态并发、持久化队列认领与临时 Worker 释放。
 - [ ] 🟡 DONE — 孤儿任务恢复、验证码过期清理异步防重入。
 - [ ] ⬜ TODO — done 任务归档/清理进大循环清单（保留窗口待拍板）。

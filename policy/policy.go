@@ -19,29 +19,32 @@ var (
 	purgeRunning   atomic.Bool
 )
 
-// PolicyServicesStart 运行维护调度大循环。本方法持续阻塞，由 main 以 goroutine 拉起。
+// PolicyServicesStart 启动内部维护调度大循环并立即返回。
 // 每轮将所有定期任务异步派发，各任务互不阻塞。
 func PolicyServicesStart() {
-	ctx := context.Background()
+	go func() {
+		ctx := context.Background()
 
-	gtbox_log.LogInfof("policy maintenance loop started")
-	for {
-		dispatchQueuedTasks(ctx)
+		gtbox_log.LogInfof("policy maintenance loop started")
+		for {
+			dispatchQueuedTasks(ctx)
 
-		runOnceAsync(&requeueRunning, func() {
-			if err := ability_task.RequeueOrphanedTasks(ctx); err != nil {
-				gtbox_log.LogErrorf("policy maintenance [async_task_requeue] failed: %v", err)
-			}
-		})
+			runOnceAsync(&requeueRunning, func() {
+				if err := ability_task.RequeueOrphanedTasks(ctx); err != nil {
+					gtbox_log.LogErrorf("policy maintenance [async_task_requeue] failed: %v", err)
+				}
+			})
 
-		runOnceAsync(&purgeRunning, func() {
-			if err := api_auth_verify_code.PurgeExpired(ctx); err != nil {
-				gtbox_log.LogErrorf("policy maintenance [auth_verify_code_purge] failed: %v", err)
-			}
-		})
+			runOnceAsync(&purgeRunning, func() {
+				if err := api_auth_verify_code.PurgeExpired(ctx); err != nil {
+					gtbox_log.LogErrorf("policy maintenance [auth_verify_code_purge] failed: %v", err)
+				}
+			})
 
-		time.Sleep(policy_config.CurrentPolicyDuration())
-	}
+			time.Sleep(policy_config.CurrentPolicyDuration())
+		}
+	}()
+
 }
 
 // dispatchQueuedTasks 按当前空闲名额派发单次 Worker；Worker 执行完自然释放，不常驻、不空转。
