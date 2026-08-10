@@ -120,6 +120,33 @@ for f in LICENSE README.md; do
     [[ -f "${TARGET_DIR}/${f}" ]] && cp "${TARGET_DIR}/${f}" "${TMP_DIR}/${f}.bak"
 done
 
+# 目标无既有 README 时不落模板使用说明，生成新项目精简 README
+if [[ ! -f "${TARGET_DIR}/README.md" ]]; then
+    cat > "${SCAFFOLD}/README.md" <<EOF
+# ${PROJECT_NAME}
+
+基于 project_template_go 实例化的服务骨架。module：\`${NEW_MODULE}\`。
+
+## 本地运行
+
+- \`go run .\`（Debug 模式读 \`./example_files/config_local.yaml\`）
+- 默认端口：JSON-RPC \`13001\`、MCP \`13002\`、test_ui \`13003\`、WebSocket \`13004\`、gRPC \`13005\`
+
+## 文档
+
+- 全量协作契约：\`AGENTS.md\`
+- API 方法清单：\`docs/api_methods.md\`（\`gen_api_docs.sh\` 生成，禁手改）
+- 各功能域契约：\`docs/ability_*.md\`
+EOF
+fi
+
+# 目标无既有 LICENSE 时不代选许可证：模板作者 LICENSE 不落入新项目
+NEED_LICENSE=0
+if [[ ! -f "${TARGET_DIR}/LICENSE" ]]; then
+    rm -f "${SCAFFOLD}/LICENSE"
+    NEED_LICENSE=1
+fi
+
 cp -r "${SCAFFOLD}"/. "${TARGET_DIR}/"
 
 for f in LICENSE README.md; do
@@ -133,5 +160,12 @@ echo "Done! module: ${NEW_MODULE}"
 echo ""
 echo "Next steps:"
 echo "  git add . && git commit -m 'chore: init from project_template_go'"
+if [[ "${NEED_LICENSE}" == "1" ]]; then
+    echo "  为新项目补充 LICENSE（模板不代选许可证）"
+fi
 
-rm -f -- "$0"
+# 自清理只针对落在目标项目内的脚本副本（wget 下载场景）；引用模板仓路径执行时不得删除模板自身
+SCRIPT_PATH="$(cd "$(dirname -- "$0")" 2>/dev/null && pwd)/$(basename -- "$0")"
+if [[ "${SCRIPT_PATH}" == "${TARGET_DIR}/"* ]]; then
+    rm -f -- "$0"
+fi
