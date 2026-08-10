@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xdevelop/project_template_go/config"
 )
 
 var (

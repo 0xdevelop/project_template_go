@@ -6,10 +6,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/0xYeah/project_template_go/api/api_common"
-	"github.com/0xYeah/project_template_go/api/api_executer"
-	"github.com/0xYeah/project_template_go/api/api_supported_methods"
-	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_executer"
+	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
+	"github.com/0xdevelop/project_template_go/config"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

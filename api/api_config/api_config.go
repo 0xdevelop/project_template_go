@@ -2,10 +2,10 @@
 package api_config
 
 import (
-	"github.com/0xYeah/project_template_go/api/api_grpc/api_config_grpc"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
-	"github.com/0xYeah/project_template_go/api/api_mcp/api_config_mcp"
-	"github.com/0xYeah/project_template_go/api/api_websocket/api_config_websocket"
+	"github.com/0xdevelop/project_template_go/api/api_grpc/api_config_grpc"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
+	"github.com/0xdevelop/project_template_go/api/api_mcp/api_config_mcp"
+	"github.com/0xdevelop/project_template_go/api/api_websocket/api_config_websocket"
 )
 
 type ApiConfig struct {

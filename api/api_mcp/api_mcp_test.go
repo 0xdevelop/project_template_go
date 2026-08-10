@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xYeah/project_template_go/ability"
-	"github.com/0xYeah/project_template_go/api/api_config"
-	"github.com/0xYeah/project_template_go/api/api_supported_methods"
-	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xdevelop/project_template_go/ability"
+	"github.com/0xdevelop/project_template_go/api/api_config"
+	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
+	"github.com/0xdevelop/project_template_go/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

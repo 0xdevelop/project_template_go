@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xYeah/project_template_go/ability/ability_task"
-	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_verify_code"
-	"github.com/0xYeah/project_template_go/policy/policy_config"
+	"github.com/0xdevelop/project_template_go/ability/ability_task"
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_verify_code"
+	"github.com/0xdevelop/project_template_go/policy/policy_config"
 	"github.com/george012/gtbox/gtbox_log"
 )
 

@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xdevelop/project_template_go/config"
 	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_coding"
 	"github.com/george012/gtbox/gtbox_log"

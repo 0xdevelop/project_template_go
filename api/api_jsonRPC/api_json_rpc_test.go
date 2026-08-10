@@ -7,12 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/0xYeah/project_template_go/ability"
-	"github.com/0xYeah/project_template_go/api/api_config"
-	"github.com/0xYeah/project_template_go/api/api_error_code"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_handler"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
-	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xdevelop/project_template_go/ability"
+	"github.com/0xdevelop/project_template_go/api/api_config"
+	"github.com/0xdevelop/project_template_go/api/api_error_code"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_handler"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
+	"github.com/0xdevelop/project_template_go/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

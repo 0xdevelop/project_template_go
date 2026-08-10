@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/0xYeah/project_template_go/ability/ability_task/ability_task_model"
-	"github.com/0xYeah/project_template_go/ability/ability_user/ability_user_model"
-	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_model"
+	"github.com/0xdevelop/project_template_go/ability/ability_task/ability_task_model"
+	"github.com/0xdevelop/project_template_go/ability/ability_user/ability_user_model"
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_model"
 	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_mysql"
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"

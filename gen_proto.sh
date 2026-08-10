@@ -13,7 +13,7 @@
 # module 前缀自动放置。
 set -euo pipefail
 
-MODULE="github.com/0xYeah/project_template_go"
+MODULE="github.com/0xdevelop/project_template_go"
 
 # ─── 工具链同步：从本仓 go.mod 锁定版本装到 $GOBIN ────────────────────────
 echo ">>> 同步工具链版本 (从 go.mod)"

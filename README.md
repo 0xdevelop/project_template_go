@@ -8,15 +8,15 @@ Go 服务项目模版：统一 API 编排（JSON-RPC / MCP / WebSocket / gRPC �
 
 ```bash
 cd my_project
-wget -qO- https://raw.githubusercontent.com/0xYeah/project_template_go/main/new_project.sh | bash
+wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/new_project.sh | bash
 ```
 
 **没有 `go.mod`**（手动传 module path）：
 
 ```bash
 cd my_project
-wget -qO- https://raw.githubusercontent.com/0xYeah/project_template_go/main/new_project.sh | bash -s -- my_project
-wget -qO- https://raw.githubusercontent.com/0xYeah/project_template_go/main/new_project.sh | bash -s -- github.com/myorg/my_service
+wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/new_project.sh | bash -s -- my_project
+wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/new_project.sh | bash -s -- github.com/myorg/my_service
 ```
 
 `new_project.sh` 会：重写全部 module path 与项目名引用；patch `config/config.go` 常量（`ProjectName` / `ProjectVersion`→`v0.0.1` / `ProjectBundleID`）；重命名 `example_files/` 带模版名的文件；清空 `changelog/`；保留已有 `LICENSE` 与 `README.md`；最后删除自身。仅依赖 `git` 与 `bash`。

@@ -1,4 +1,4 @@
-module github.com/0xYeah/project_template_go
+module github.com/0xdevelop/project_template_go
 
 go 1.25.5
 

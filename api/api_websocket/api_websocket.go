@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xYeah/project_template_go/api/api_common"
-	"github.com/0xYeah/project_template_go/api/api_executer"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_request"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_response"
-	"github.com/0xYeah/project_template_go/api/api_websocket/api_config_websocket"
+	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_executer"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_request"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_response"
+	"github.com/0xdevelop/project_template_go/api/api_websocket/api_config_websocket"
 	"github.com/coder/websocket"
 	"github.com/george012/gtbox/gtbox_log"
 )

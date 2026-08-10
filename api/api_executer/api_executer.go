@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/0xYeah/project_template_go/ability/ability_task"
-	"github.com/0xYeah/project_template_go/api/api_auth/api_auth_session"
-	"github.com/0xYeah/project_template_go/api/api_error_code"
-	"github.com/0xYeah/project_template_go/api/api_supported_methods"
+	"github.com/0xdevelop/project_template_go/ability/ability_task"
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
+	"github.com/0xdevelop/project_template_go/api/api_error_code"
+	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
 	"github.com/george012/gtbox/gtbox_log"
 )
 

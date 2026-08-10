@@ -4,10 +4,10 @@ package ability
 import (
 	"context"
 
-	"github.com/0xYeah/project_template_go/ability/ability_task"
-	"github.com/0xYeah/project_template_go/ability/ability_user/ability_user_profile"
-	"github.com/0xYeah/project_template_go/api/api_auth"
-	"github.com/0xYeah/project_template_go/api/api_supported_methods"
+	"github.com/0xdevelop/project_template_go/ability/ability_task"
+	"github.com/0xdevelop/project_template_go/ability/ability_user/ability_user_profile"
+	"github.com/0xdevelop/project_template_go/api/api_auth"
+	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
 )
 
 const MethodTest = "test"

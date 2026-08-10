@@ -150,7 +150,7 @@ const file_api_proto_rawDesc = "" +
 	"\x06result\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x06result2g\n" +
 	"\n" +
 	"APIService\x12Y\n" +
-	"\x04Call\x12'.project_template_go.api.v1.CallRequest\x1a(.project_template_go.api.v1.CallResponseBOZMgithub.com/0xYeah/project_template_go/api/api_grpc/protobuf;api_grpc_protobufb\x06proto3"
+	"\x04Call\x12'.project_template_go.api.v1.CallRequest\x1a(.project_template_go.api.v1.CallResponseBOZMgithub.com/0xdevelop/project_template_go/api/api_grpc/protobuf;api_grpc_protobufb\x06proto3"
 
 var (
 	file_api_proto_rawDescOnce sync.Once

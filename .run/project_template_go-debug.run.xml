@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="project_template_go-debug" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="project_template_go" />
+    <working_directory value="$PROJECT_DIR$" />
+    <kind value="FILE" />
+    <filePath value="$PROJECT_DIR$/main.go" />
+    <package value="github.com/0xdevelop/project_template_go" />
+    <directory value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

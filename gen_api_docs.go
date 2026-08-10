@@ -11,10 +11,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/0xYeah/project_template_go/ability"
-	"github.com/0xYeah/project_template_go/api/api_error_code"
-	"github.com/0xYeah/project_template_go/api/api_supported_methods"
-	"github.com/0xYeah/project_template_go/config"
+	"github.com/0xdevelop/project_template_go/ability"
+	"github.com/0xdevelop/project_template_go/api/api_error_code"
+	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
+	"github.com/0xdevelop/project_template_go/config"
 )
 
 const methodsDocPath = "docs/api_methods.md"

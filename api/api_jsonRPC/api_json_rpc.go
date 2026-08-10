@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/0xYeah/project_template_go/api/api_common"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_handler"
+	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_handler"
 	"github.com/george012/gtbox/gtbox_log"
 	"github.com/gorilla/mux"
 )

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xYeah/project_template_go/ability/ability_user/ability_user_model"
-	appdb "github.com/0xYeah/project_template_go/db"
+	"github.com/0xdevelop/project_template_go/ability/ability_user/ability_user_model"
+	appdb "github.com/0xdevelop/project_template_go/db"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )

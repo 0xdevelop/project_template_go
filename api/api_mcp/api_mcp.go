@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/0xYeah/project_template_go/api/api_common"
-	"github.com/0xYeah/project_template_go/api/api_mcp/api_config_mcp"
+	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_mcp/api_config_mcp"
 	"github.com/george012/gtbox/gtbox_log"
 )
 

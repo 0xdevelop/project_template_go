@@ -3,8 +3,8 @@ package api_jsonRPC_request
 import (
 	"encoding/json"
 
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
 )
 
 func ParserRequest(body []byte, reqModel *api_jsonRPC_protocol.RPCRequest) error {

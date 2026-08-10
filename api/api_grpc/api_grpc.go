@@ -8,9 +8,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/0xYeah/project_template_go/api/api_executer"
-	"github.com/0xYeah/project_template_go/api/api_grpc/api_config_grpc"
-	api_grpc_protobuf "github.com/0xYeah/project_template_go/api/api_grpc/protobuf"
+	"github.com/0xdevelop/project_template_go/api/api_executer"
+	"github.com/0xdevelop/project_template_go/api/api_grpc/api_config_grpc"
+	api_grpc_protobuf "github.com/0xdevelop/project_template_go/api/api_grpc/protobuf"
 	"github.com/george012/gtbox/gtbox_log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

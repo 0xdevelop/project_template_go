@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage:
 #   bash new_project.sh <module_path>
-#   wget -qO- https://raw.githubusercontent.com/0xYeah/project_template_go/main/new_project.sh | bash -s -- <module_path>
+#   wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/new_project.sh | bash -s -- <module_path>
 #
 # Run from inside your project directory (already cloned or freshly created).
 #
@@ -12,8 +12,8 @@
 
 set -euo pipefail
 
-TEMPLATE_REPO="https://github.com/0xYeah/project_template_go.git"
-TEMPLATE_MODULE="github.com/0xYeah/project_template_go"
+TEMPLATE_REPO="https://github.com/0xdevelop/project_template_go.git"
+TEMPLATE_MODULE="github.com/0xdevelop/project_template_go"
 TEMPLATE_NAME="project_template_go"
 
 usage() {

@@ -3,7 +3,7 @@ package api_executer
 import (
 	"testing"
 
-	"github.com/0xYeah/project_template_go/api/api_config"
+	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/george012/gtbox/gtbox_encryption"
 )
 

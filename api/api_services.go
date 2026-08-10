@@ -2,12 +2,12 @@
 package api
 
 import (
-	"github.com/0xYeah/project_template_go/ability"
-	"github.com/0xYeah/project_template_go/api/api_config"
-	"github.com/0xYeah/project_template_go/api/api_grpc"
-	"github.com/0xYeah/project_template_go/api/api_jsonRPC"
-	"github.com/0xYeah/project_template_go/api/api_mcp"
-	"github.com/0xYeah/project_template_go/api/api_websocket"
+	"github.com/0xdevelop/project_template_go/ability"
+	"github.com/0xdevelop/project_template_go/api/api_config"
+	"github.com/0xdevelop/project_template_go/api/api_grpc"
+	"github.com/0xdevelop/project_template_go/api/api_jsonRPC"
+	"github.com/0xdevelop/project_template_go/api/api_mcp"
+	"github.com/0xdevelop/project_template_go/api/api_websocket"
 	"github.com/george012/gtbox/gtbox_log"
 )
 
