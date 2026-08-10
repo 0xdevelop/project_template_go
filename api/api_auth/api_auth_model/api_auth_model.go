@@ -1,4 +1,4 @@
-// Package api_auth_model gcs_api/api_auth/api_auth_model/api_auth_model.go
+// Package api_auth_model api/api_auth/api_auth_model/api_auth_model.go
 package api_auth_model
 
 import (
