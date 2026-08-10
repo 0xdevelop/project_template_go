@@ -84,10 +84,8 @@ func LoadAPIMethods() {
 		Description: "查询我的异步任务状态与结果",
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
-				"jwt_token": api_auth_common.StringSchema("", 1, 8192),
-				"task_id":   api_auth_common.StringSchema("", 36, 36),
+				"task_id": api_auth_common.StringSchema("", 36, 36),
 			},
-			"jwt_token",
 			"task_id",
 		),
 		Execute: TaskGet,
@@ -96,10 +94,7 @@ func LoadAPIMethods() {
 		Name:        MethodTaskList,
 		Description: "列出我的异步任务（新→旧，最多 50 条）",
 		InputSchema: api_auth_common.InputSchema(
-			map[string]interface{}{
-				"jwt_token": api_auth_common.StringSchema("", 1, 8192),
-			},
-			"jwt_token",
+			map[string]interface{}{},
 		),
 		Execute: TaskList,
 	})
@@ -108,10 +103,8 @@ func LoadAPIMethods() {
 		Description: "取消我的排队中任务（执行中任务不可取消）",
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
-				"jwt_token": api_auth_common.StringSchema("", 1, 8192),
-				"task_id":   api_auth_common.StringSchema("", 36, 36),
+				"task_id": api_auth_common.StringSchema("", 36, 36),
 			},
-			"jwt_token",
 			"task_id",
 		),
 		Execute: TaskCancel,
@@ -352,7 +345,7 @@ func UpdateProgress(ctx context.Context, taskID string, progress float64, messag
 
 func TaskGet(ctx context.Context, input interface{}) (interface{}, error) {
 	params, ok := api_auth_common.InputObject(input)
-	if !ok || !api_auth_common.HasOnlyKeys(params, "jwt_token", "task_id") {
+	if !ok || !api_auth_common.HasOnlyKeys(params, "task_id") {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	taskID, taskIDOK := api_auth_common.RequiredString(params, "task_id")
@@ -381,7 +374,7 @@ func TaskGet(ctx context.Context, input interface{}) (interface{}, error) {
 
 func TaskList(ctx context.Context, input interface{}) (interface{}, error) {
 	params, ok := api_auth_common.InputObject(input)
-	if !ok || !api_auth_common.HasOnlyKeys(params, "jwt_token") {
+	if !ok || !api_auth_common.HasOnlyKeys(params) {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	user, _, err := api_auth_session.AuthenticatedUser(ctx)
@@ -410,7 +403,7 @@ func TaskList(ctx context.Context, input interface{}) (interface{}, error) {
 // TaskCancel 取消我的排队中任务：queued 原子置 done+cancelled；running/done 或非属主统一拒绝。
 func TaskCancel(ctx context.Context, input interface{}) (interface{}, error) {
 	params, ok := api_auth_common.InputObject(input)
-	if !ok || !api_auth_common.HasOnlyKeys(params, "jwt_token", "task_id") {
+	if !ok || !api_auth_common.HasOnlyKeys(params, "task_id") {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	taskID, taskIDOK := api_auth_common.RequiredString(params, "task_id")

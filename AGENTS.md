@@ -30,6 +30,7 @@
 ## 文档与临时目录
 
 - 每个功能域使用对应的 `docs/ability_xxx.md` 维护功能概览、业务流程、预期目的和实现进度，README 只保留入口链接，不重复维护细节。
+- Ability 文档统一模板（`<!-- TOC -->` 索引 + 编号 H1/H2，无独立大标题）：`1. <域> 域定位与边界 → 2. 业务流转（mermaid 调用/状态图）→ 3. 方法契约（每方法 `## 3.N.`：一句语义 + JSON 传参举例 + 实现要求要点）→ 4. 数据与并发纪律 → 5. 验收边界 → 6. 实现进度`；无流转或无对外方法的域可省对应节并顺延编号。入参 schema 权威只在 `api_methods.md`（编号分组由 `gen_api_docs.go` 生成、正文不带 TOC 块，禁手改；功能域树形分类目录由 `/docs_api` 渲染页左侧承担，实现在 `web/src/docs_api.ts` 的 buildToc：H1 域为可折叠父节点、H2 方法为子节点），ability 文档不重复 schema。
 - 实现进度统一使用 Markdown checklist 和状态标识：`[ ] ⬜ TODO` 未开始、`[ ] 🔄 IN_PROGRESS` 推进中、`[ ] 🟡 DONE` 实现完成未验收、`[x] ✅ ACCEPTED` 验收通过终态、`[ ] ❓ DISPUTED` 有争议需对齐。只有 `ACCEPTED` 可以打勾；不得把计划、编译、局部测试或仅完成代码提前标记为验收通过。
 - 方法清单文档 `docs/api_methods.md` 由根目录 `gen_api_docs.sh` 从 `api_supported_methods` 注册表生成，禁止手改；新增方法后重新执行生成，发版由 `git_tag.sh` 自动调用。对外只暴露单个渲染页 `GET /docs_api`（`api_methods.md` 内容由服务端注入页面，无任何原始文件路由，页面源码为 `test_ui/web/src/docs_api.*`）；`api_description.md` 等内部契约一律不对外、不 embed。
 - `docs/` 文档需要网页呈现时统一走既定模式：文档本体留在 `docs/` 作唯一事实源，对外文档经 `docs` 包 `//go:embed` 随二进制发布；test_ui 现有 mux 挂单页路由，文档内容由服务端注入页面（dev 优先读磁盘、离仓回落 embed），不设任何原始文件路由。失败路径与未匹配路径统一 `HomeHandler` 中性空响应，不输出任何提示。不新增 HTTP 服务、不复制文档、不引入 Python 或额外构建步骤。
@@ -38,7 +39,7 @@
 ## Auth 准入域与统一门禁
 
 - Auth 是 API 准入域，实现整体位于 `api/api_auth`（子包 `api_auth_verify_code` / `api_auth_register` / `api_auth_session` / `api_auth_common` / `api_auth_config` / `api_auth_model`），负责验证码、注册/登录认证编排、session/JWT、刷新和退出；`ability` 树内不得出现鉴权/准入代码。
-- APIExecuter 内置统一准入门禁：非 `Public` 注册方法在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证 `arguments.jwt_token`，身份经 context 下传，业务方法用 `api_auth_session.AuthenticatedUser(ctx)` 读取，不得自行鉴权。`SupportedMethod.Public` 零值为受保护（fail-closed），仅 `test`、验证码、注册、登录、refresh 显式标记 `Public: true`。
+- APIExecuter 内置统一准入门禁：非 `Public` 注册方法在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证 `arguments.jwt_token`，验证后即将其从 arguments 移除——业务 Execute 与 Async 落库只见业务参数；身份经 context 下传，业务方法用 `api_auth_session.AuthenticatedUser(ctx)` 读取，不得自行鉴权。`jwt_token` 入参 schema 由方法注册表按非 Public 自动注入，业务注册声明即启动 panic。`SupportedMethod.Public` 零值为受保护（fail-closed），仅 `test`、验证码、注册、登录、refresh 显式标记 `Public: true`。
 - api 层（协议 Adapter、APIExecuter、准入门禁、`api_auth` 域）定型后不再随业务演进修改；新增功能一律进 `ability` 业务子包。契约明记的既有例外：`SupportedMethod.Async` 受理语义的一次性接入，与 `ability_user_profile` 的顶层装配（profile 依赖父包 `ability_user` 数据方法，父包带子包装配会成 import 环）。
 - Auth 需要用户身份或校验密码时必须调用 `ability_user` 的方法，不得直接查询、创建或更新 User model；注册事务把当前 GORM transaction 传给 User 方法，User 方法不得另开事务。
 - 邮件发送供应商由 Auth `email` 配置的 `provider` 字段选择，当前仅支持 `resend`（官方 Go SDK）；`api_key`、`from`、`product_name`、`verification_subject` 等均为强配置，缺失或非法在配置加载层显式拒绝并输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 键路径，敏感字段只报名不报值），不在业务代码里兜默认值。

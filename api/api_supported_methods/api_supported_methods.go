@@ -10,7 +10,9 @@ type SupportedMethod struct {
 	InputSchema map[string]interface{}
 	Async       bool
 	// Public 为 true 的方法免统一准入门禁（如 test、验证码、注册、登录）；
-	// 零值 false = 受保护，APIExecuter 在 Execute 前验证 arguments.jwt_token（fail-closed）。
+	// 零值 false = 受保护，APIExecuter 在 Execute 前验证 arguments.jwt_token（fail-closed），
+	// 验证后即从 arguments 移除，业务 Execute 只见业务参数；
+	// jwt_token 入参 schema 由注册表按非 Public 自动注入，业务注册禁止声明。
 	Public  bool
 	Execute func(context.Context, interface{}) (interface{}, error)
 }
@@ -30,7 +32,43 @@ func AddMethod(method *SupportedMethod) {
 			panic("duplicate supported API method: " + method.Name)
 		}
 	}
+	injectGateTokenSchema(method)
 	currentSupportedMethods = append(currentSupportedMethods, method)
+}
+
+// jwtTokenSchema 是统一准入门禁的 wire 契约形状，与 AuthenticateRequest 的 1..8192 校验对齐。
+// 字面量内联在注册表：门禁 wire 契约归 API 层，注册表保持零业务包依赖。
+func jwtTokenSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":      "string",
+		"minLength": 1,
+		"maxLength": 8192,
+	}
+}
+
+// injectGateTokenSchema 给非 Public 方法注入 jwt_token 入参 schema；
+// 业务注册禁止自带 jwt_token，违者启动即 panic（fail-fast，防回退旧写法）。
+func injectGateTokenSchema(method *SupportedMethod) {
+	if method.Public {
+		return
+	}
+	schema := method.InputSchema
+	if schema == nil {
+		panic("protected API method requires input schema: " + method.Name)
+	}
+	properties, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		panic("protected API method input schema missing properties object: " + method.Name)
+	}
+	if _, exists := properties["jwt_token"]; exists {
+		panic("jwt_token schema is gate-injected, business registration must not declare it: " + method.Name)
+	}
+	required, ok := schema["required"].([]string)
+	if !ok {
+		panic("protected API method input schema missing required list: " + method.Name)
+	}
+	properties["jwt_token"] = jwtTokenSchema()
+	schema["required"] = append([]string{"jwt_token"}, required...)
 }
 
 func Methods() []SupportedMethod {

@@ -109,6 +109,22 @@ func FindByUserID(db *gorm.DB, userID string) (*ability_user_model.User, error) 
 	return record, nil
 }
 
+// FindByUserIDs 按 user_id 集合批量取用户；结果不保证顺序，调用方自行按需重排。
+func FindByUserIDs(db *gorm.DB, userIDs []string) ([]*ability_user_model.User, error) {
+	if db == nil {
+		return nil, errors.New("mysql database is not initialized")
+	}
+	records := make([]*ability_user_model.User, 0, len(userIDs))
+	if len(userIDs) == 0 {
+		return records, nil
+	}
+	err := db.Where("user_id IN ?", userIDs).Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 func authenticate(record *ability_user_model.User, password string, findErr error) (*ability_user_model.User, error) {
 	if errors.Is(findErr, gorm.ErrRecordNotFound) {
 		burnPasswordVerificationCost(password)

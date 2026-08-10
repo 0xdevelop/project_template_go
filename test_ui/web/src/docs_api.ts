@@ -92,7 +92,8 @@ function renderMarkdown(markdown: string): { html: string; toc: TocItem[] } {
       const text = heading[2].trim();
       const id = slugify(text.replace(/[*_]/g, ""), usedIds);
       html.push(`<h${level} id="${id}">${renderInline(text)}</h${level}>`);
-      if (level === 2 || level === 3) {
+      // H1 = 功能域/顶层节，H2 = 域内方法：两级构成左侧分类树
+      if (level === 1 || level === 2) {
         toc.push({ level, id, text: text.replace(/`/g, "") });
       }
       index += 1;
@@ -184,17 +185,43 @@ function renderMarkdown(markdown: string): { html: string; toc: TocItem[] } {
   return { html: html.join("\n"), toc };
 }
 
+// buildToc 构建左侧分类树：H1 为父节点（有方法子节点时可折叠，点击开合；无子节点时直接跳转），
+// H2 方法为缩进子节点。
 function buildToc(toc: TocItem[]): void {
   const nav = document.getElementById("toc");
   if (!nav) {
     return;
   }
   const out = ['<div class="toc-title">目录</div>'];
-  for (const item of toc) {
-    out.push(
-      `<a class="lv${item.level}" href="#${item.id}">${escapeHtml(item.text)}</a>`,
-    );
+  let groupOpen = false;
+  const closeGroup = () => {
+    if (groupOpen) {
+      out.push("</details>");
+      groupOpen = false;
+    }
+  };
+  for (let index = 0; index < toc.length; index += 1) {
+    const item = toc[index];
+    if (item.level === 1) {
+      closeGroup();
+      const hasChildren = index + 1 < toc.length && toc[index + 1].level === 2;
+      if (hasChildren) {
+        out.push(
+          `<details class="toc-group" open><summary>${escapeHtml(item.text)}</summary>`,
+        );
+        groupOpen = true;
+      } else {
+        out.push(
+          `<a class="toc-root" href="#${item.id}">${escapeHtml(item.text)}</a>`,
+        );
+      }
+    } else {
+      out.push(
+        `<a class="toc-child" href="#${item.id}">${escapeHtml(item.text)}</a>`,
+      );
+    }
   }
+  closeGroup();
   nav.innerHTML = out.join("");
 }
 

@@ -85,9 +85,44 @@ body {
   background: var(--doc-code-bg);
 }
 
-#toc a.lv3 {
-  padding-left: 24px;
+#toc a.toc-root {
+  font-weight: 600;
+}
+
+#toc .toc-group summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
+  font-weight: 600;
+  list-style: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#toc .toc-group summary::-webkit-details-marker {
+  display: none;
+}
+
+#toc .toc-group summary::before {
   color: var(--doc-muted);
+  content: "▸";
+  transition: transform 0.15s;
+}
+
+#toc .toc-group[open] summary::before {
+  transform: rotate(90deg);
+}
+
+#toc .toc-group summary:hover {
+  color: var(--doc-accent);
+  background: var(--doc-code-bg);
+}
+
+#toc a.toc-child {
+  padding-left: 30px;
+  color: var(--doc-muted);
+  font-size: 13px;
 }
 
 #main {

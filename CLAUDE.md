@@ -18,7 +18,8 @@
 - `.proto` 源只放 `api/api_grpc/proto`，生成的 `.pb.go` 只放 `api/api_grpc/protobuf`，只由根目录 `gen_proto.sh` 生成。
 - `db.GlobalMysqlCtl` 是唯一 MySQL 入口；表结构以 Go model + `AutoMigrate` 为事实源，禁止手写 DDL 或第二套迁移。
 - **禁止自造流程与工具程序**：不建独立小工具 main 包 / 测试程序包，工具代码不进服务二进制、不塞进既有功能包；生成类工具只有一种形态——根目录 `gen_*.sh` + `//go:build ignore` 单文件（`tools.go` 同款隔离）。不堆无验收价值的 `*_test.go`。动任何既有包前先确认其定位。
-- API 文档链：`docs/api_methods.md` 由 `gen_api_docs.sh` 从方法注册表生成，禁止手改。对外只有 `GET /docs_api` 单渲染页（内容由 `test_ui` 服务端注入，页面源码 `test_ui/web/src/docs_api.*`，无原始文件路由）；`api_description.md` 等内部契约不对外、不 embed。
+- Auth 是 API 准入域，实现位于 `api/api_auth`；APIExecuter 统一准入门禁在 Execute 前验 `arguments.jwt_token` 并即时将其从 arguments 移除，业务方法经 `api_auth_session.AuthenticatedUser(ctx)` 取身份、不自行鉴权、不见 token；`jwt_token` schema 由方法注册表按非 Public 自动注入，业务注册禁止声明。
+- API 文档链：`docs/api_methods.md` 由 `gen_api_docs.sh` 从方法注册表生成（功能域编号分组，正文不带 TOC；域树形分类目录在 `/docs_api` 渲染页左侧，实现在 `web/src/docs_api.ts`），禁止手改。对外只有 `GET /docs_api` 单渲染页（内容由 `test_ui` 服务端注入，页面源码 `test_ui/web/src/docs_api.*`，无原始文件路由）；`api_description.md` 等内部契约不对外、不 embed。
 
 ## 本地运行事实
 

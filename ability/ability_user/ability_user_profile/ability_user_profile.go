@@ -21,10 +21,8 @@ func LoadAPIMethods() {
 		Description: "修改当前用户昵称",
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
-				"jwt_token": api_auth_common.StringSchema("", 1, 8192),
 				"nick_name": api_auth_common.StringSchema("", 1, 32),
 			},
-			"jwt_token",
 			"nick_name",
 		),
 		Execute: UserNicknameChange,
@@ -33,7 +31,7 @@ func LoadAPIMethods() {
 
 func UserNicknameChange(ctx context.Context, input interface{}) (interface{}, error) {
 	params, ok := api_auth_common.InputObject(input)
-	if !ok || !api_auth_common.HasOnlyKeys(params, "jwt_token", "nick_name") {
+	if !ok || !api_auth_common.HasOnlyKeys(params, "nick_name") {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	nickName, nickOK := api_auth_common.RequiredRawString(params, "nick_name")

@@ -51,7 +51,7 @@ project_template_go
 │   ├── api_mcp                MCP 接入（官方 Go SDK，协议 2026-07-28）
 │   ├── api_websocket          WebSocket 接入并写回原 connection
 │   ├── api_grpc               单一 APIService.Call RPC（proto 源 + 生成物分目录）
-│   ├── api_executer           唯一业务执行入口，统一提取、编解码与准入门禁（非 Public 方法验 jwt_token）
+│   ├── api_executer           唯一业务执行入口，统一提取、编解码与准入门禁（非 Public 方法验 jwt_token，验后即从 arguments 移除）
 │   ├── api_supported_methods  方法描述、Execute、Public 标志与有序目录（文档唯一事实源）
 │   ├── api_auth               API 权限准入域：验证码、注册、登录、session/JWT、统一门禁（契约见 docs/ability_auth.md）
 │   └── api_error_code         通用业务错误码
@@ -68,7 +68,7 @@ project_template_go
 ### 关键约束（全文见 `AGENTS.md`）
 
 - `APIExecuter` 是唯一执行入口，不维护业务 `switch`；新增业务方法只在 Ability 子包注册并由直属父包加载。
-- 统一准入门禁：非 `Public` 方法 Execute 前经 `api_auth_session` 验证 `arguments.jwt_token`，身份经 context 下传；`ability` 树内零鉴权代码（Auth/User 契约见 [`docs/ability_auth.md`](docs/ability_auth.md) / [`docs/ability_user.md`](docs/ability_user.md)）。
+- 统一准入门禁：非 `Public` 方法 Execute 前经 `api_auth_session` 验证 `arguments.jwt_token`，验证后即从 arguments 移除（schema 由注册表按非 Public 自动注入），身份经 context 下传；`ability` 树内零鉴权代码（Auth/User 契约见 [`docs/ability_auth.md`](docs/ability_auth.md) / [`docs/ability_user.md`](docs/ability_user.md)）。
 - 业务失败统一 `CallToolResult`（HTTP 200 + `isError=true`）；协议错误只留给外壳损坏与服务故障。
 - 异步任务以 MySQL 记录为持久化排队区，Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 填充空闲名额；详见 [`docs/ability_task.md`](docs/ability_task.md)。
 - Policy 单大循环、临时 Worker 释放、同类维护任务防重入与重启续跑契约见 [`docs/ability_policy.md`](docs/ability_policy.md)。

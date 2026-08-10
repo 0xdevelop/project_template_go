@@ -43,6 +43,8 @@ func APIExecuter(ctx context.Context, method string, params interface{}, encrypt
 		if ctx, err = api_auth_session.AuthenticateRequest(ctx, abilityParams); err != nil {
 			return finish(nil, err, encryptionKey)
 		}
+		// 门禁参数生命周期到此终结：业务 Execute 与 Async 落库只见业务参数
+		delete(abilityParams, "jwt_token")
 	}
 	// Async 受理语义的一次性接入（AGENTS 契约预留）：事务写任务记录并返回 task_id，
 	// Worker 后续调用同一注册项的 Execute。

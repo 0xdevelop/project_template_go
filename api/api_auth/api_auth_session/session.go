@@ -67,13 +67,13 @@ func LoadAPIMethods() {
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodLogout,
 		Description: "撤销当前登录状态",
-		InputSchema: api_auth_common.TokenInputSchema("jwt_token"),
+		InputSchema: api_auth_common.InputSchema(map[string]interface{}{}),
 		Execute:     AuthLogout,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodJWTTokenCheck,
 		Description: "检查 JWT token 并返回当前身份",
-		InputSchema: api_auth_common.TokenInputSchema("jwt_token"),
+		InputSchema: api_auth_common.InputSchema(map[string]interface{}{}),
 		Execute:     AuthJWTTokenCheck,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
@@ -166,7 +166,7 @@ func AuthLoginPhone(ctx context.Context, input interface{}) (interface{}, error)
 
 func AuthLogout(ctx context.Context, input interface{}) (interface{}, error) {
 	params, ok := api_auth_common.InputObject(input)
-	if !ok || !api_auth_common.HasOnlyKeys(params, "jwt_token") {
+	if !ok || !api_auth_common.HasOnlyKeys(params) {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	user, session, err := AuthenticatedUser(ctx)
@@ -198,7 +198,7 @@ func AuthLogout(ctx context.Context, input interface{}) (interface{}, error) {
 
 func AuthJWTTokenCheck(ctx context.Context, input interface{}) (interface{}, error) {
 	params, ok := api_auth_common.InputObject(input)
-	if !ok || !api_auth_common.HasOnlyKeys(params, "jwt_token") {
+	if !ok || !api_auth_common.HasOnlyKeys(params) {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	user, session, err := AuthenticatedUser(ctx)
@@ -414,6 +414,7 @@ type authenticatedIdentityContextKey struct{}
 
 // AuthenticateRequest 是 APIExecuter 统一准入门禁入口：验证 arguments.jwt_token 并把身份写入 context。
 // 非 Public 方法在 Execute 前必经此函数；失败统一返回业务错误，不区分 token 缺失与无效。
+// 验证通过后 jwt_token 由 APIExecuter 从 arguments 移除，业务层零感知。
 func AuthenticateRequest(ctx context.Context, abilityParams interface{}) (context.Context, error) {
 	params, ok := abilityParams.(map[string]interface{})
 	if !ok {

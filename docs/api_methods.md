@@ -1,8 +1,6 @@
-# API 方法清单
-
 > 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.12，共 15 个方法），禁止手改；新增方法后重新执行生成。
 
-## 统一调用方式
+# 1. 统一调用方式
 
 所有方法经同一入口调用，JSON-RPC over HTTP、MCP、WebSocket、gRPC 只是外壳不同，
 运输同一份请求和同一份结果。业务方法由 `params.name` 选择，业务入参放在
@@ -28,7 +26,7 @@
 200，`isError=true`，`content[0].text` 为
 `{"error_code":...,"error_msg":"..."}`。
 
-### 业务错误码
+# 2. 业务错误码
 
 | error_code | error_msg |
 | ---------- | --------- |
@@ -37,8 +35,9 @@
 | 10002 | method is not supported |
 | 10003 | invalid arguments |
 | 10004 | permission denied |
+| 10005 | verification code delivery failed |
 
-## test
+# 3. test
 
 检查统一 API 调用链是否可用
 
@@ -51,7 +50,9 @@
 }
 ```
 
-## auth.verify_code.send.email
+# 4. Auth
+
+## 4.1. auth.verify_code.send.email
 
 发送邮箱验证码
 
@@ -75,7 +76,7 @@
 }
 ```
 
-## auth.verify_code.check.email
+## 4.2. auth.verify_code.check.email
 
 检查邮箱验证码
 
@@ -104,7 +105,7 @@
 }
 ```
 
-## auth.verify_code.send.sms
+## 4.3. auth.verify_code.send.sms
 
 发送短信验证码（暂不支持）
 
@@ -126,7 +127,7 @@
 }
 ```
 
-## auth.verify_code.check.sms
+## 4.4. auth.verify_code.check.sms
 
 检查短信验证码（暂不支持）
 
@@ -153,7 +154,7 @@
 }
 ```
 
-## auth.register
+## 4.5. auth.register
 
 使用邮箱验证码注册账户；user_name 为注册必填主标识
 
@@ -194,7 +195,7 @@
 }
 ```
 
-## auth.login.email
+## 4.6. auth.login.email
 
 使用邮箱登录
 
@@ -231,7 +232,7 @@
 }
 ```
 
-## auth.login.phone
+## 4.7. auth.login.phone
 
 使用手机号登录
 
@@ -270,7 +271,7 @@
 }
 ```
 
-## auth.logout
+## 4.8. auth.logout
 
 撤销当前登录状态
 
@@ -293,7 +294,7 @@
 }
 ```
 
-## auth.jwt_token.check
+## 4.9. auth.jwt_token.check
 
 检查 JWT token 并返回当前身份
 
@@ -316,7 +317,7 @@
 }
 ```
 
-## auth.jwt_token.refresh
+## 4.10. auth.jwt_token.refresh
 
 轮换 refresh token 并签发新 JWT token
 
@@ -339,7 +340,9 @@
 }
 ```
 
-## user.nickname.change
+# 5. User
+
+## 5.1. user.nickname.change
 
 修改当前用户昵称
 
@@ -368,7 +371,9 @@
 }
 ```
 
-## task.get
+# 6. Task
+
+## 6.1. task.get
 
 查询我的异步任务状态与结果
 
@@ -397,7 +402,7 @@
 }
 ```
 
-## task.list
+## 6.2. task.list
 
 列出我的异步任务（新→旧，最多 50 条）
 
@@ -420,7 +425,7 @@
 }
 ```
 
-## task.cancel
+## 6.3. task.cancel
 
 取消我的排队中任务（执行中任务不可取消）
 
