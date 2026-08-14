@@ -222,6 +222,7 @@ func SaveConfig(file string, content *FileConfig) error {
 }
 
 func generateDefaultConfig() *FileConfig {
+	authGateEnabledDefault := true
 	aport := 13001
 	fileCfg := &FileConfig{
 		MysqlCfg: &db_config.MysqlConfig{
@@ -261,6 +262,8 @@ func generateDefaultConfig() *FileConfig {
 			WorkersScaller: 1,
 		},
 		AuthCfg: &api_auth_config.AuthConfig{
+			Enabled:  &authGateEnabledDefault,
+			AuthType: api_auth_config.AuthTypeJWT,
 			Email: &api_auth_config.EmailConfig{
 				Provider:            api_auth_config.EmailProviderResend,
 				ProductName:         ProjectName,

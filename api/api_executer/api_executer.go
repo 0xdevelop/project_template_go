@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/0xdevelop/project_template_go/ability/ability_task"
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_config"
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_error_code"
 	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
@@ -40,10 +41,13 @@ func APIExecuter(ctx context.Context, method string, params interface{}, encrypt
 		return finish(nil, ErrMethodNotFound, encryptionKey)
 	}
 	if !supportedMethod.Public {
-		if ctx, err = api_auth_session.AuthenticateRequest(ctx, abilityParams); err != nil {
-			return finish(nil, err, encryptionKey)
+		// 门禁开关（auth_cfg.enabled，缺省启用）：关闭时放行不提供身份，依赖身份的方法仍会拒绝。
+		if api_auth_config.AuthGateEnabled() {
+			if ctx, err = api_auth_session.AuthenticateRequest(ctx, abilityParams); err != nil {
+				return finish(nil, err, encryptionKey)
+			}
 		}
-		// 门禁参数生命周期到此终结：业务 Execute 与 Async 落库只见业务参数
+		// 门禁参数生命周期到此终结（开关关闭时同样移除）：业务 Execute 与 Async 落库只见业务参数
 		delete(abilityParams, "jwt_token")
 	}
 	// Async 受理语义的一次性接入（AGENTS 契约预留）：事务写任务记录并返回 task_id，

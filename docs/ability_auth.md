@@ -159,7 +159,9 @@ flowchart LR
 
 - 验证码不得明文落库、写日志或进入响应（唯一例外：Debug 运行模式可写 Debug 日志供本地联调，Release/Test 禁止），必须具备 TTL、尝试次数、发送间隔、小时发送上限和消费状态。
 - JWT 必须固定签名算法、issuer、audience、有效期和 token 类型。
-- 统一准入门禁：非 Public 方法 Execute 前经 `AuthenticateRequest` 验证 `arguments.jwt_token`，验证后即从 arguments 移除，身份经 context 下传；`jwt_token` 入参 schema 由方法注册表按非 Public 自动注入，业务注册禁止声明。
+- 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权——入口按 `auth_cfg.auth_type` 分发类型（缺省与当前唯一支持值均为 `jwt`；非法值 fail-closed 拒绝全部受保护方法），jwt 类型验证 `arguments.jwt_token`；无论开关状态 `jwt_token` 均从 arguments 移除，身份经 context 下传；`jwt_token` 入参 schema 由方法注册表按非 Public 恒定自动注入（不随开关变化），业务注册禁止声明。
+- 门禁开关 `auth_cfg.enabled`：缺省启用（段/键缺席均按启用处理，fail-closed 取向）；显式 `enabled: false` 时门禁放行且**不提供身份**——依赖 `AuthenticatedUser(ctx)` 的方法照常返回权限错误（不造匿名/系统假身份），适用无用户体系的部署形态。
+- Auth 配置校验纪律同样覆盖 `auth_cfg.auth_type`（仅认 `jwt`，非法值 warning + 全部受保护方法拒绝）。
 - `db.GlobalMysqlCtl` 是唯一 MySQL 入口；查询和写入使用 `MysqlDB.WithContext(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `AutoMigrate` 同步，不得经另一连接池、原始 DDL、mysql CLI 或外部脚本修改。
 - 邮件通道供应商由 auth 配置 `email.provider` 选择，当前仅支持 `resend`（Resend 官方 Go SDK）；配置进入 `config.FileConfig` 的 YAML/JSON/TOML 体系。
 - `email` 配置块的 `provider`、`api_key`、`from`、`product_name`（邮件文案品牌名）、`verification_subject` 均为强配置：缺失或非法在配置加载层显式拒绝，不在业务代码里兜默认值。

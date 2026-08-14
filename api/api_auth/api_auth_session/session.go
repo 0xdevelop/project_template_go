@@ -412,10 +412,26 @@ type authenticatedIdentity struct {
 
 type authenticatedIdentityContextKey struct{}
 
-// AuthenticateRequest 是 APIExecuter 统一准入门禁入口：验证 arguments.jwt_token 并把身份写入 context。
-// 非 Public 方法在 Execute 前必经此函数；失败统一返回业务错误，不区分 token 缺失与无效。
+// AuthenticateRequest 是 APIExecuter 统一准入门禁入口：按 auth_cfg.auth_type 分发鉴权类型
+// （当前仅 jwt：验证 arguments.jwt_token 并把身份写入 context；未来新类型在此 switch 扩分支）。
+// 非 Public 方法在门禁启用时 Execute 前必经此函数；失败统一返回业务错误，不区分 token 缺失与无效。
 // 验证通过后 jwt_token 由 APIExecuter 从 arguments 移除，业务层零感知。
 func AuthenticateRequest(ctx context.Context, abilityParams interface{}) (context.Context, error) {
+	authType, err := api_auth_config.CurrentAuthType()
+	if err != nil {
+		// 非法 auth_type 按 fail-closed 拒绝全部受保护方法；具体原因已由配置层 warn 日志定位。
+		return ctx, api_error_code.ErrPermissionDenied
+	}
+	switch authType {
+	case api_auth_config.AuthTypeJWT:
+		return authenticateRequestWithJWT(ctx, abilityParams)
+	default:
+		return ctx, api_error_code.ErrPermissionDenied
+	}
+}
+
+// authenticateRequestWithJWT 是 jwt 类型的门禁实现：验 arguments.jwt_token、查 session 与用户、身份下传 context。
+func authenticateRequestWithJWT(ctx context.Context, abilityParams interface{}) (context.Context, error) {
 	params, ok := abilityParams.(map[string]interface{})
 	if !ok {
 		return ctx, api_error_code.ErrInvalidArguments

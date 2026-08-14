@@ -27,6 +27,8 @@ policy_cfg: # Policy scheduling configurations
   policy_duration: "10s" # 定期轮询事项执行完一次到下一次的间隔，Go duration 字符串
   workers_scaller: 5 # 最大异步并发 = CPU 数量 × 倍率
 auth_cfg: # Auth configurations
+  enabled: true # 统一准入门禁开关；缺省 true；false=门禁放行不提供身份，依赖身份的方法不可用
+  auth_type: "jwt" # 鉴权类型；缺省与当前唯一支持值均为 jwt
   email: # Email delivery configuration
     provider: "resend"
     api_key: ""
