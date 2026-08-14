@@ -63,9 +63,14 @@ func injectGateTokenSchema(method *SupportedMethod) {
 	if _, exists := properties["jwt_token"]; exists {
 		panic("jwt_token schema is gate-injected, business registration must not declare it: " + method.Name)
 	}
-	required, ok := schema["required"].([]string)
-	if !ok {
-		panic("protected API method input schema missing required list: " + method.Name)
+	// required 键缺席 = 零业务必填（InputSchema 省略空 required），jwt_token 注入后成为唯一必填；键在但类型不对才是坏 schema。
+	var required []string
+	if rawRequired, exists := schema["required"]; exists {
+		typedRequired, typedOK := rawRequired.([]string)
+		if !typedOK {
+			panic("protected API method input schema malformed required list: " + method.Name)
+		}
+		required = typedRequired
 	}
 	properties["jwt_token"] = jwtTokenSchema()
 	schema["required"] = append([]string{"jwt_token"}, required...)

@@ -117,12 +117,16 @@ func InputSchema(
 	properties map[string]interface{},
 	required ...string,
 ) map[string]interface{} {
-	return map[string]interface{}{
+	schema := map[string]interface{}{
 		"type":                 "object",
 		"properties":           properties,
-		"required":             required,
 		"additionalProperties": false,
 	}
+	// 零必填方法省略 required 键，避免序列化出 required: null 的畸形 schema。
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
 }
 
 func StringSchema(

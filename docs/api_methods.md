@@ -26,6 +26,11 @@
 200，`isError=true`，`content[0].text` 为
 `{"error_code":...,"error_msg":"..."}`。
 
+**方法节怎么读**：每个方法节给出方法语义、`arguments` **传参举例**（必填字段的
+实际请求形态，占位值按真实值替换）与 `arguments` **JSON Schema**（机器可校验的
+约束说明——`required` 数组表示「哪些字段必填」，`properties` 内是各字段
+类型与长度约束；**schema 本身不是请求体的一部分，不要照抄进请求**）。
+
 # 2. 业务错误码
 
 | error_code | error_msg |
@@ -41,7 +46,7 @@
 
 检查统一 API 调用链是否可用
 
-`arguments` JSON Schema：
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -56,7 +61,15 @@
 
 发送邮箱验证码
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "email": "<email>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -80,7 +93,16 @@
 
 检查邮箱验证码
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "email": "<email>",
+  "verify_code": "<verify_code>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -109,7 +131,15 @@
 
 发送短信验证码（暂不支持）
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "phone": "<phone>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -131,7 +161,16 @@
 
 检查短信验证码（暂不支持）
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "phone": "<phone>",
+  "verify_code": "<verify_code>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -158,7 +197,18 @@
 
 使用邮箱验证码注册账户；user_name 为注册必填主标识
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "email": "<email>",
+  "password": "<password>",
+  "user_name": "<user_name>",
+  "verify_code": "<verify_code>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -199,7 +249,17 @@
 
 使用邮箱登录
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "email": "<email>",
+  "login_method": "password",
+  "password": "<password>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -236,7 +296,18 @@
 
 使用手机号登录
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "login_method": "password",
+  "phone": "<phone>"
+}
+```
+
+可选字段：`password`、`verify_code`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -275,7 +346,15 @@
 
 撤销当前登录状态
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "jwt_token": "<jwt_token>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -298,7 +377,15 @@
 
 检查 JWT token 并返回当前身份
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "jwt_token": "<jwt_token>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -321,7 +408,15 @@
 
 轮换 refresh token 并签发新 JWT token
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "refresh_token": "<refresh_token>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -346,7 +441,16 @@
 
 修改当前用户昵称
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "jwt_token": "<jwt_token>",
+  "nick_name": "<nick_name>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -377,7 +481,16 @@
 
 查询我的异步任务状态与结果
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "jwt_token": "<jwt_token>",
+  "task_id": "<task_id>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -406,7 +519,15 @@
 
 列出我的异步任务（新→旧，最多 50 条）
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "jwt_token": "<jwt_token>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {
@@ -429,7 +550,16 @@
 
 取消我的排队中任务（执行中任务不可取消）
 
-`arguments` JSON Schema：
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "jwt_token": "<jwt_token>",
+  "task_id": "<task_id>"
+}
+```
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
 ```json
 {

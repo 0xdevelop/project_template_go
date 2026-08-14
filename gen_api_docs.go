@@ -6,9 +6,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/0xdevelop/project_template_go/ability"
@@ -116,15 +118,79 @@ func renderMethodBody(doc *strings.Builder, method *api_supported_methods.Suppor
 		doc.WriteString("\n异步方法：受理后返回 `task_id`，进度与结果经任务查询方法读取。\n")
 	}
 	if method.InputSchema != nil {
+		if err := renderArgumentsExample(doc, method); err != nil {
+			return err
+		}
 		schema, err := json.MarshalIndent(method.InputSchema, "", "  ")
 		if err != nil {
 			return fmt.Errorf("encode InputSchema of %s: %w", method.Name, err)
 		}
-		doc.WriteString("\n`arguments` JSON Schema：\n\n```json\n")
+		doc.WriteString("\n`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：\n\n```json\n")
 		doc.Write(schema)
 		doc.WriteString("\n```\n")
 	}
 	return nil
+}
+
+// renderArgumentsExample 从 InputSchema 生成 arguments 传参举例：只展开必填字段
+// （enum 取首值、date-time 给样例、其余用 <字段名> 占位），可选字段单独列名。
+func renderArgumentsExample(doc *strings.Builder, method *api_supported_methods.SupportedMethod) error {
+	properties, ok := method.InputSchema["properties"].(map[string]interface{})
+	if !ok || len(properties) == 0 {
+		return nil
+	}
+	var required []string
+	if rawRequired, exists := method.InputSchema["required"]; exists {
+		typedRequired, typedOK := rawRequired.([]string)
+		if !typedOK {
+			return fmt.Errorf("malformed required list in InputSchema of %s", method.Name)
+		}
+		required = typedRequired
+	}
+	example := map[string]interface{}{}
+	for _, name := range required {
+		example[name] = examplePlaceholder(name, properties[name])
+	}
+	optionalNames := make([]string, 0)
+	for name := range properties {
+		if example[name] == nil {
+			optionalNames = append(optionalNames, "`"+name+"`")
+		}
+	}
+	sort.Strings(optionalNames)
+
+	var exampleBuffer bytes.Buffer
+	exampleEncoder := json.NewEncoder(&exampleBuffer)
+	exampleEncoder.SetEscapeHTML(false)
+	exampleEncoder.SetIndent("", "  ")
+	if err := exampleEncoder.Encode(example); err != nil {
+		return fmt.Errorf("encode arguments example of %s: %w", method.Name, err)
+	}
+	doc.WriteString("\n`arguments` 传参举例（仅含必填字段）：\n\n```json\n")
+	doc.WriteString(strings.TrimRight(exampleBuffer.String(), "\n"))
+	doc.WriteString("\n```\n")
+	if len(optionalNames) > 0 {
+		fmt.Fprintf(doc, "\n可选字段：%s。\n", strings.Join(optionalNames, "、"))
+	}
+	return nil
+}
+
+// examplePlaceholder 按字段 schema 造举例值：enum 取首值、date-time 给固定样例、其余 <字段名> 占位。
+func examplePlaceholder(name string, rawPropertySchema interface{}) interface{} {
+	propertySchema, ok := rawPropertySchema.(map[string]interface{})
+	if !ok {
+		return "<" + name + ">"
+	}
+	if enumValues, exists := propertySchema["enum"].([]interface{}); exists && len(enumValues) > 0 {
+		return enumValues[0]
+	}
+	if enumValues, exists := propertySchema["enum"].([]string); exists && len(enumValues) > 0 {
+		return enumValues[0]
+	}
+	if format, exists := propertySchema["format"].(string); exists && format == "date-time" {
+		return "2026-01-02T15:04:05Z"
+	}
+	return "<" + name + ">"
 }
 
 func renderErrorCodeTable() (string, error) {
@@ -174,4 +240,9 @@ const unifiedCallBody = `
 直接承载业务 JSON；业务失败（含未注册方法、参数不合法、鉴权失败）HTTP 状态仍为
 200，` + "`isError=true`" + `，` + "`content[0].text`" + ` 为
 ` + "`{\"error_code\":...,\"error_msg\":\"...\"}`" + `。
+
+**方法节怎么读**：每个方法节给出方法语义、` + "`arguments`" + ` **传参举例**（必填字段的
+实际请求形态，占位值按真实值替换）与 ` + "`arguments`" + ` **JSON Schema**（机器可校验的
+约束说明——` + "`required`" + ` 数组表示「哪些字段必填」，` + "`properties`" + ` 内是各字段
+类型与长度约束；**schema 本身不是请求体的一部分，不要照抄进请求**）。
 `
