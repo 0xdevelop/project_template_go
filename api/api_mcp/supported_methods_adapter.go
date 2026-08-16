@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/0xdevelop/project_template_go/api/api_common"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
 	"github.com/0xdevelop/project_template_go/config"
@@ -16,7 +15,6 @@ import (
 
 const (
 	mcpMaxRequestBodySize = 4 << 20
-	mcpProtocolVersion    = "2026-07-28"
 )
 
 func newMCPHTTPHandler() http.Handler {
@@ -31,14 +29,12 @@ func newMCPHTTPHandler() http.Handler {
 		},
 	)
 	crossOriginProtection := http.NewCrossOriginProtection()
-	protectedHandler := crossOriginProtection.Handler(handler)
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("Mcp-Protocol-Version") != mcpProtocolVersion {
-			api_common.HomeHandler(writer, request)
-			return
-		}
-		protectedHandler.ServeHTTP(writer, request)
-	})
+	// 不按 Mcp-Protocol-Version 请求头筛请求：按 MCP 规范，该头是握手协商完成
+	// 之后的请求才携带，initialize 请求不带；在这里做写死版本号的等值判断会把
+	// 握手本身挡在外面，标准客户端第一步就收到非 MCP 响应（官方 TS SDK 表现为
+	// `Unexpected content type: null`）。版本协商是 SDK 的职责；非 MCP 的误访问
+	// 由路由 GET 分支的 HomeHandler 接住（路由已限定 `POST /{$}` 才进本 handler）。
+	return crossOriginProtection.Handler(handler)
 }
 
 func newMCPServer() *mcp.Server {

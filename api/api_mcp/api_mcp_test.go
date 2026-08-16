@@ -16,6 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// expectedNegotiatedProtocolVersion 是当前 SDK 版本双方协商出的协议版本，
+// SDK 升级时同步更新；服务端不以它做请求头等值判断。
+const expectedNegotiatedProtocolVersion = "2026-07-28"
+
 func TestMCPUsesSupportedMethodsThroughLatestOfficialSDK(t *testing.T) {
 	ability.LoadAbilityAPIMethods()
 	previousAPICfg := api_config.CurrentApiCfg
@@ -43,11 +47,13 @@ func TestMCPUsesSupportedMethodsThroughLatestOfficialSDK(t *testing.T) {
 	}
 	defer session.Close()
 	initializeResult := session.InitializeResult()
-	if initializeResult.ProtocolVersion != mcpProtocolVersion {
+	// 协议版本由 SDK 双方协商得出，服务端不做写死版本号的请求头等值判断；
+	// 此处只断言当前 SDK 版本协商出的结果，SDK 升级时同步更新期望值。
+	if initializeResult.ProtocolVersion != expectedNegotiatedProtocolVersion {
 		t.Fatalf(
 			"protocol version = %q, want %q",
 			initializeResult.ProtocolVersion,
-			mcpProtocolVersion,
+			expectedNegotiatedProtocolVersion,
 		)
 	}
 	if initializeResult.Capabilities == nil ||
@@ -122,7 +128,9 @@ func TestMCPStatelessHTTPUsesProtocol20260728(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json, text/event-stream")
-	request.Header.Set("Mcp-Protocol-Version", mcpProtocolVersion)
+	// 握手之后形态的 stateless 直调：SDK 要求 _meta 带 protocolVersion 的请求
+	// 必须同时带 Mcp-Protocol-Version 头（握手后的请求按规范携带该头）。
+	request.Header.Set("Mcp-Protocol-Version", expectedNegotiatedProtocolVersion)
 	request.Header.Set("Mcp-Method", "tools/call")
 	request.Header.Set("Mcp-Name", "test")
 
@@ -149,6 +157,47 @@ func TestMCPStatelessHTTPUsesProtocol20260728(t *testing.T) {
 		serverInfo["name"] != config.ProjectName ||
 		serverInfo["version"] != config.ProjectVersion {
 		t.Fatalf("unexpected response: %#v", rpcResponse)
+	}
+}
+
+// TestMCPInitializeWithoutProtocolVersionHeader 是握手回归防线：按 MCP 规范，
+// initialize 请求不携带 Mcp-Protocol-Version 头（该头是协商完成之后的请求才带），
+// handler 必须照常完成握手。曾有按该头做写死版本号等值判断的实现把握手本身
+// 挡在外面，标准客户端第一步就收到非 MCP 响应（官方 TS SDK 报
+// `Unexpected content type: null`）。
+func TestMCPInitializeWithoutProtocolVersionHeader(t *testing.T) {
+	ability.LoadAbilityAPIMethods()
+	const requestID = "mcp-initialize-request-id"
+	body := `{
+		"jsonrpc": "2.0",
+		"id": "` + requestID + `",
+		"method": "initialize",
+		"params": {
+			"protocolVersion": "2025-11-25",
+			"capabilities": {},
+			"clientInfo": {"name": "template-test", "version": "1.0.0"}
+		}
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+
+	response := httptest.NewRecorder()
+	newMCPHTTPHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected MCP status %d: %s", response.Code, response.Body.String())
+	}
+	var rpcResponse struct {
+		ID     string `json:"id"`
+		Result struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &rpcResponse); err != nil {
+		t.Fatalf("decode MCP response: %v", err)
+	}
+	if rpcResponse.ID != requestID || rpcResponse.Result.ProtocolVersion == "" {
+		t.Fatalf("unexpected initialize response: %s", response.Body.String())
 	}
 }
 
