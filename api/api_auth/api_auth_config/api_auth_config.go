@@ -15,15 +15,34 @@ var (
 // EmailProviderResend 是当前唯一支持的邮件供应商取值。
 const EmailProviderResend = "resend"
 
-// AuthTypeJWT 是当前唯一支持的鉴权类型取值；未来新增类型在此常量组扩展并在门禁分发处加分支。
-const AuthTypeJWT = "jwt"
+// 鉴权类型取值；未来新增类型在此常量组扩展并在门禁分发处加分支。
+//
+//	jwt    —— self-issuer：本服务自签自验、持 session 库表（模板默认形态）；
+//	bridge —— 身份桥接：令牌由外部 IdP 签发，本服务用 IdP 公钥本地验签，
+//	          并在本地管理这批外部令牌（登出吊销——IdP 的 logout 只吊销它那侧的
+//	          refresh token，access token 在本地验签下仍有效到自然过期，
+//	          这一段只有本服务自己能拦）。
+const (
+	AuthTypeJWT    = "jwt"
+	AuthTypeBridge = "bridge"
+)
 
 type AuthConfig struct {
 	Enabled      *bool               `yaml:"enabled" json:"enabled" toml:"enabled" comment:"统一准入门禁开关；缺省 true（fail-closed）；false=门禁放行不提供身份，依赖身份的方法不可用"`
-	AuthType     string              `yaml:"auth_type" json:"auth_type" toml:"auth_type" comment:"鉴权类型；缺省与当前唯一支持值均为 jwt，非法值使全部受保护方法拒绝"`
+	AuthType     string              `yaml:"auth_type" json:"auth_type" toml:"auth_type" comment:"鉴权类型；缺省 jwt（自签发），bridge=验外部 IdP 签发的令牌；非法值使全部受保护方法拒绝"`
 	Email        *EmailConfig        `yaml:"email" json:"email" toml:"email" comment:"Email delivery configuration"`
 	Verification *VerificationConfig `yaml:"verification" json:"verification" toml:"verification" comment:"Verification code policy"`
 	Session      *SessionConfig      `yaml:"session" json:"session" toml:"session" comment:"JWT and refresh session policy"`
+	Bridge       *BridgeConfig       `yaml:"bridge" json:"bridge" toml:"bridge" comment:"bridge 形态配置（auth_type=bridge 时必填）"`
+}
+
+type BridgeConfig struct {
+	Issuer                  string   `yaml:"issuer" json:"issuer" toml:"issuer" comment:"IdP 标识（记录用途）"`
+	AllowedAlgs             []string `yaml:"allowed_algs" json:"allowed_algs" toml:"allowed_algs" comment:"验签算法白名单；缺省 [ES256]；禁 none 与空串（fail-closed，防降级）"`
+	PublicKeyPath           string   `yaml:"public_key_path" json:"public_key_path" toml:"public_key_path" comment:"IdP 公钥 PEM 文件路径（PKIX，P-256）；bridge 形态必填"`
+	LeewaySeconds           int      `yaml:"leeway_seconds" json:"leeway_seconds" toml:"leeway_seconds" comment:"时钟偏移容忍秒数；缺省 60"`
+	RevocationEnabled       *bool    `yaml:"revocation_enabled" json:"revocation_enabled" toml:"revocation_enabled" comment:"本地登出吊销开关；缺省 true"`
+	RevocationMaxTTLSeconds int      `yaml:"revocation_max_ttl_seconds" json:"revocation_max_ttl_seconds" toml:"revocation_max_ttl_seconds" comment:"吊销记录保留秒数，应 >= IdP access token 最长寿命；缺省 86400"`
 }
 
 type EmailConfig struct {
@@ -66,14 +85,55 @@ func CurrentAuthType() (string, error) {
 		return AuthTypeJWT, nil
 	}
 	authType := strings.ToLower(strings.TrimSpace(CurrentCfgAuth.AuthType))
-	if authType == "" {
+	switch authType {
+	case "", AuthTypeJWT:
 		return AuthTypeJWT, nil
-	}
-	if authType != AuthTypeJWT {
+	case AuthTypeBridge:
+		return AuthTypeBridge, nil
+	default:
 		invalidConfigField("auth_cfg.auth_type", "is not a supported auth type")
 		return "", errors.New("unsupported auth type")
 	}
-	return AuthTypeJWT, nil
+}
+
+// CurrentBridgeConfig 返回 bridge 形态配置（带缺省值），并做 fail-closed 校验：
+// 公钥路径必填；算法白名单禁 none 与空串（防降级）。
+func CurrentBridgeConfig() (*BridgeConfig, error) {
+	if CurrentCfgAuth == nil || CurrentCfgAuth.Bridge == nil {
+		invalidConfigField("auth_cfg.bridge", "block is not configured")
+		return nil, errors.New("bridge config is not initialized")
+	}
+	config := *CurrentCfgAuth.Bridge
+	if strings.TrimSpace(config.PublicKeyPath) == "" {
+		invalidConfigField("auth_cfg.bridge.public_key_path", "is empty")
+		return nil, errors.New("bridge config is invalid")
+	}
+	if len(config.AllowedAlgs) == 0 {
+		config.AllowedAlgs = []string{"ES256"}
+	}
+	for _, alg := range config.AllowedAlgs {
+		normalized := strings.ToLower(strings.TrimSpace(alg))
+		if normalized == "" || normalized == "none" {
+			invalidConfigField("auth_cfg.bridge.allowed_algs", "must not contain none or empty")
+			return nil, errors.New("bridge config is invalid")
+		}
+	}
+	if config.LeewaySeconds <= 0 {
+		config.LeewaySeconds = 60
+	}
+	if config.RevocationMaxTTLSeconds <= 0 {
+		config.RevocationMaxTTLSeconds = 86400
+	}
+	return &config, nil
+}
+
+// RevocationEnabled bridge 本地吊销是否启用：键缺席按启用处理（fail-closed 方向）。
+func RevocationEnabled() bool {
+	if CurrentCfgAuth == nil || CurrentCfgAuth.Bridge == nil ||
+		CurrentCfgAuth.Bridge.RevocationEnabled == nil {
+		return true
+	}
+	return *CurrentCfgAuth.Bridge.RevocationEnabled
 }
 
 // invalidConfigField 记录指向具体配置键的告警日志，帮助后端快速定位配置问题；敏感值只报字段名不报内容。

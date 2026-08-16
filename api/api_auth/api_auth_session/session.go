@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xdevelop/project_template_go/ability/ability_user"
 	"github.com/0xdevelop/project_template_go/ability/ability_user/ability_user_model"
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_bridge"
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_common"
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_config"
 	authModel "github.com/0xdevelop/project_template_go/api/api_auth/api_auth_model"
@@ -425,9 +426,80 @@ func AuthenticateRequest(ctx context.Context, abilityParams interface{}) (contex
 	switch authType {
 	case api_auth_config.AuthTypeJWT:
 		return authenticateRequestWithJWT(ctx, abilityParams)
+	case api_auth_config.AuthTypeBridge:
+		return authenticateRequestWithBridge(ctx, abilityParams)
 	default:
 		return ctx, api_error_code.ErrPermissionDenied
 	}
+}
+
+// ── bridge 形态（auth_type=bridge）────────────────────────────────────────────
+//
+// 令牌由外部 IdP 签发，本服务用 IdP 公钥本地验签 + 查本地吊销状态；
+// 无 session 库表、无 DB 用户行——身份即验签出的 claims。
+// 业务方法在 bridge 形态下用 AuthenticatedBridgePrincipal(ctx) 读身份
+// （jwt 形态用 AuthenticatedUser，两者身份形状不同：DB 用户行 vs 令牌 claims）。
+
+var currentBridgeVerifier *api_auth_bridge.BridgeTokenVerifier
+
+type bridgePrincipalContextKey struct{}
+
+// InitializeBridge 按 auth_cfg.bridge 构造验签器（加载并校验 IdP 公钥）。
+// 应在服务启动期调用以 fail-fast；失败时门禁保持 fail-closed 全拒。
+func InitializeBridge() error {
+	bridgeConfig, err := api_auth_config.CurrentBridgeConfig()
+	if err != nil {
+		return err
+	}
+	verifier, err := api_auth_bridge.NewBridgeTokenVerifier(
+		bridgeConfig.PublicKeyPath,
+		bridgeConfig.AllowedAlgs,
+		time.Duration(bridgeConfig.LeewaySeconds)*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+	currentBridgeVerifier = verifier
+	return nil
+}
+
+// authenticateRequestWithBridge 是 bridge 类型的门禁实现：
+// 验 arguments.jwt_token → 查本地吊销 → claims 身份下传 context。
+// jwt_token 由 APIExecuter 在返回后统一从 arguments 移除，业务层零感知。
+func authenticateRequestWithBridge(ctx context.Context, abilityParams interface{}) (context.Context, error) {
+	params, ok := abilityParams.(map[string]interface{})
+	if !ok {
+		return ctx, api_error_code.ErrInvalidArguments
+	}
+	tokenValue, _ := params["jwt_token"].(string)
+	tokenValue = strings.TrimSpace(tokenValue)
+	if tokenValue == "" || len(tokenValue) > 8192 {
+		return ctx, api_error_code.ErrPermissionDenied
+	}
+	if currentBridgeVerifier == nil {
+		return ctx, api_error_code.ErrPermissionDenied
+	}
+	claims, err := currentBridgeVerifier.VerifyToken(tokenValue)
+	if err != nil || claims == nil || claims.UserID == "" {
+		return ctx, api_error_code.ErrPermissionDenied
+	}
+	if api_auth_config.RevocationEnabled() {
+		isRevoked, revokeErr := api_auth_bridge.Revoked(ctx, claims.UserID, claims.IssuedAt)
+		if revokeErr != nil || isRevoked {
+			return ctx, api_error_code.ErrPermissionDenied
+		}
+	}
+	return context.WithValue(ctx, bridgePrincipalContextKey{}, claims), nil
+}
+
+// AuthenticatedBridgePrincipal 供业务方法读取 bridge 门禁下传的调用方身份；
+// bridge 形态下非 Public 方法执行时必有。
+func AuthenticatedBridgePrincipal(ctx context.Context) (*api_auth_bridge.VerifiedClaims, error) {
+	claims, ok := ctx.Value(bridgePrincipalContextKey{}).(*api_auth_bridge.VerifiedClaims)
+	if !ok || claims == nil {
+		return nil, api_error_code.ErrPermissionDenied
+	}
+	return claims, nil
 }
 
 // authenticateRequestWithJWT 是 jwt 类型的门禁实现：验 arguments.jwt_token、查 session 与用户、身份下传 context。

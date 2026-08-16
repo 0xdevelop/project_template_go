@@ -181,6 +181,24 @@ flowchart LR
 - SMS 相关调用和手机号验证码登录返回 `API_METHOD_NOT_SUPPORTED`。
 - 四种协议的业务失败均使用正常协议状态和相同业务返回值。
 
+# 5.1 auth_type=bridge（身份桥接形态）
+
+`auth_cfg.auth_type: bridge` 时本服务不签发令牌：令牌由外部 IdP 签发，本服务用 IdP
+公钥本地验签（`api/api_auth/api_auth_bridge`），并在本地管理这批外部令牌。
+
+- 配置 `auth_cfg.bridge.*`：`issuer`（IdP 标识）、`allowed_algs`（缺省 `[ES256]`，
+  禁 `none` 与空串）、`public_key_path`（PKIX PEM，P-256，必填）、`leeway_seconds`
+  （缺省 60）、`revocation_enabled`（缺省 true）、`revocation_max_ttl_seconds`
+  （缺省 86400，应 >= IdP access token 最长寿命）。
+- 门禁分支：`AuthenticateRequest` → `authenticateRequestWithBridge`——验
+  `arguments.jwt_token` → 查本地吊销 → claims 下传 context；业务用
+  `AuthenticatedBridgePrincipal(ctx)` 读身份。
+- 吊销判定：令牌 `iat` < 用户登出时刻 → 拒；`iat` 缺席且有登出记录 → 拒；
+  查询失败 fail-closed 拒。登出方法在转发 IdP 成功后调
+  `api_auth_bridge.RevokeUserTokens(ctx, userID, retain)`。
+- 自签发域（login/register/verify_code/session 库表）在 bridge 形态下不适用；
+  实例应将取令牌入口交给 IdP（直连或聚合转发），本地只保留需要吊销钩子的登出包装。
+
 # 6. 实现进度
 
 状态按 `TODO → IN_PROGRESS → DONE → ACCEPTED` 流转；发生争议时进入 `DISPUTED`，对齐后回到 `IN_PROGRESS`。只有 `ACCEPTED` 可以打勾。
