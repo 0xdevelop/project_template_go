@@ -80,7 +80,21 @@ while IFS= read -r -d '' file; do
     fi
 done < <(find "${SCAFFOLD}" -type f \
     ! -path "*/.git/*" \
+    ! -name "*.pb.go" \
     -print0)
+
+# .pb.go 不参与 sed：生成物的 rawDesc 里嵌着 proto 路径字符串且带二进制长度前缀，
+# 文本替换会让长度失配，protobuf 解析直接越界 panic。正解是改 proto 源后重新生成。
+echo "[2b/3] Regenerating protobuf (proto sources were rewritten)..."
+if command -v protoc >/dev/null 2>&1 &&
+    command -v protoc-gen-go >/dev/null 2>&1 &&
+    command -v protoc-gen-go-grpc >/dev/null 2>&1; then
+    (cd "${SCAFFOLD}" && bash gen_proto.sh) ||
+        echo "WARN: gen_proto.sh 执行失败，请在新项目内手动重跑（否则 gRPC 面不可用）"
+else
+    echo "WARN: 未找到 protoc/protoc-gen-go/protoc-gen-go-grpc，.pb.go 仍是模板 module 路径。"
+    echo "      新项目内必须安装工具链后执行 ./gen_proto.sh 重新生成（否则 gRPC 面不可用）。"
+fi
 
 # ── 3. Patch config/config.go constants ──────────────────────────────────────
 echo "[3/3] Patching config/config.go..."
