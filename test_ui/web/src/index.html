@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
-    <meta name="description" content="project_template_go 开发环境 API 调试台" />
+    <meta name="description" content="开发环境 API 调试台" />
     <title>API Lab</title>
     <link rel="stylesheet" href="./index.css" />
   </head>
@@ -21,10 +21,10 @@
             </span>
             <span class="brand-copy">
               <span class="brand-line">
-                <strong id="project-name">project_template_go</strong>
+                <strong id="project-name">—</strong>
                 <span id="project-version">v0.0.2</span>
               </span>
-              <small id="project-bundle">com.project_template_go.project_template_go</small>
+              <small id="project-bundle">—</small>
             </span>
           </a>
           <a
@@ -73,6 +73,28 @@
             autocomplete="off"
             title="注册要求密码至少 15 个字符"
           />
+          <label for="test-access-token">令牌</label>
+          <input
+            id="test-access-token"
+            name="test-access-token"
+            type="password"
+            value=""
+            placeholder="access token"
+            autocomplete="off"
+            spellcheck="false"
+            title="受保护方法：REST 走 Authorization: Bearer，MCP / JSON-RPC 走 arguments.jwt_token"
+          />
+          <label for="test-org-id">组织</label>
+          <input
+            id="test-org-id"
+            name="test-org-id"
+            type="text"
+            value=""
+            placeholder="org_id"
+            autocomplete="off"
+            spellcheck="false"
+            title="活动组织：REST 走 X-Org-Id，MCP / JSON-RPC 走 arguments.org_id"
+          />
         </div>
 
         <div class="project-facts" aria-label="项目基本信息">
@@ -96,6 +118,14 @@
             <small>gRPC</small>
             <strong id="grpc-port">:13005</strong>
           </span>
+          <span class="fact transport-fact" id="rest-fact">
+            <small>REST</small>
+            <strong id="rest-port">:12000</strong>
+          </span>
+          <span class="fact transport-fact" id="health-fact">
+            <small>HEALTH</small>
+            <strong id="health-port">:11999</strong>
+          </span>
           <span class="fact status-fact">
             <span class="state-dot" aria-hidden="true"></span>
             <strong>LOCAL</strong>
@@ -107,7 +137,7 @@
       <section class="protocol-bar" aria-label="调用协议">
         <div class="protocol-context">
           <span>API TRANSPORT</span>
-          <strong>同一 supported API 清单</strong>
+          <strong id="source-summary">—</strong>
         </div>
         <div class="protocol-switch" role="group" aria-label="API 协议">
           <button
@@ -141,6 +171,14 @@
             data-protocol="grpc"
           >
             gRPC
+          </button>
+          <button
+            class="protocol-tab"
+            aria-pressed="false"
+            type="button"
+            data-protocol="rest"
+          >
+            REST
           </button>
         </div>
         <div class="protocol-actions">
@@ -329,6 +367,7 @@
                     <div class="editor-label">
                       <label for="request-body">实际 JSON</label>
                       <div class="editor-actions">
+                        <small id="request-shape-hint">headers + body 合一</small>
                         <button class="text-button" id="format-request" type="button">
                           格式化
                         </button>
@@ -342,21 +381,20 @@
                       name="request-body"
                       rows="7"
                       spellcheck="false"
-                      aria-label="JSON 请求体"
+                      aria-label="JSON 请求（headers 与 body 合一）"
                     ></textarea>
                   </div>
-                  <div class="compact-editor">
+                  <div class="compact-editor api-description-editor">
                     <div class="editor-label">
-                      <label for="request-headers">Headers</label>
-                      <small id="headers-count">0 项</small>
+                      <label for="api-description">接口说明</label>
+                      <small id="api-description-source">—</small>
                     </div>
-                    <textarea
-                      id="request-headers"
-                      name="request-headers"
-                      rows="7"
-                      spellcheck="false"
-                      aria-label="请求 Headers"
-                    ></textarea>
+                    <div
+                      class="api-description"
+                      id="api-description"
+                      tabindex="0"
+                      aria-live="polite"
+                    ></div>
                   </div>
                 </div>
                 <p class="field-error" id="request-error" role="alert"></p>

@@ -237,3 +237,26 @@ body {
     padding: 24px 20px 80px;
   }
 }
+
+/* 文档面切换（REST / MCP） */
+.doc-switch {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 4px;
+}
+.doc-tab {
+  flex: 1;
+  border: 1px solid #d8dbe3;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color: #4b5160;
+}
+.doc-tab.is-active {
+  background: #1f2937;
+  color: #fff;
+  border-color: #1f2937;
+}

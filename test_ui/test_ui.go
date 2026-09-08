@@ -55,15 +55,31 @@ type apiMethod struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
 	InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
+	// Source 是来源标识；单一来源的服务留空，前端显示「本服务」。
+	Source string `json:"source"`
+	// Protected 为 true 表示受门禁（入参含 jwt_token）；Public 是注册表上的免门禁标记。
+	Protected    bool `json:"protected"`
+	AcceptsOrgID bool `json:"acceptsOrgId"`
+	Public       bool `json:"public"`
 }
 
 type webConfig struct {
-	JSONRPCEndpoint   string      `json:"jsonRpcEndpoint"`
-	MCPEndpoint       string      `json:"mcpEndpoint"`
-	WebSocketEndpoint string      `json:"webSocketEndpoint"`
-	GRPCEndpoint      string      `json:"grpcEndpoint"`
-	Methods           []apiMethod `json:"methods"`
-	Project           projectInfo `json:"project"`
+	JSONRPCEndpoint   string `json:"jsonRpcEndpoint"`
+	MCPEndpoint       string `json:"mcpEndpoint"`
+	WebSocketEndpoint string `json:"webSocketEndpoint"`
+	GRPCEndpoint      string `json:"grpcEndpoint"`
+	// RESTEndpoint / HealthEndpoint 本服务没有，留空，前端隐藏对应页签与端口徽标。
+	RESTEndpoint   string `json:"restEndpoint"`
+	HealthEndpoint string `json:"healthEndpoint"`
+	// GRPCService 是 gRPC 服务全名（从 protobuf 描述符取），GRPCProtoImportPath 是 grpcurl 的 -import-path。
+	GRPCService         string `json:"grpcService"`
+	GRPCProtoImportPath string `json:"grpcProtoImportPath"`
+	// SourceLabels 是来源标识到导航功能域名的映射；单一来源留空表。
+	SourceLabels map[string]string `json:"sourceLabels"`
+	Methods      []apiMethod       `json:"methods"`
+	// RESTOperations 本服务没有 REST 面，恒空数组（前端契约要求键存在）。
+	RESTOperations []struct{}  `json:"restOperations"`
+	Project        projectInfo `json:"project"`
 }
 
 type projectInfo struct {
@@ -216,7 +232,23 @@ func listen() (net.Listener, error) {
 	return nil, fmt.Errorf("no available port from %d to 65535", port)
 }
 
-const apiDocSourcePlaceholder = "{{API_DOC_SOURCE}}"
+const apiDocSourcePlaceholder = "{{API_DOC_SOURCES}}"
+
+// apiDocSource 是注入 docs 页的一份文档：一份不出页签，多份按顺序出页签。
+type apiDocSource struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Markdown string `json:"markdown"`
+}
+
+// grpcServiceFullName 从 protobuf 描述符取 gRPC 服务全名（<package>.APIService），不写死。
+func grpcServiceFullName() string {
+	services := api_grpc_protobuf.File_api_proto.Services()
+	if services.Len() == 0 {
+		return ""
+	}
+	return string(services.Get(0).FullName())
+}
 
 // handleAPIDocPage 把对外方法文档注入 docs 页返回；对外不提供任何原始文件路由。
 // 文档内容在仓库 checkout 内优先读磁盘（编辑即生效），离仓运行时回落到随包 embed 的副本；
@@ -236,7 +268,7 @@ func handleAPIDocPage(writer http.ResponseWriter, request *http.Request, webFS f
 		return
 	}
 	// json.Marshal 生成合法 JS 字符串字面量并转义 <、>、&，注入 script 安全。
-	sourceLiteral, err := json.Marshal(string(markdown))
+	sourceLiteral, err := json.Marshal([]apiDocSource{{Key: "api", Label: "API 契约", Markdown: string(markdown)}})
 	if err != nil {
 		api_common.HomeHandler(writer, request)
 		return
@@ -292,10 +324,20 @@ func handleConfig(writer http.ResponseWriter, _ *http.Request) {
 
 	for _, method := range api_supported_methods.Methods() {
 		webCfg.Methods = append(webCfg.Methods, apiMethod{
-			Name:        method.Name,
-			Description: method.Description,
-			InputSchema: method.InputSchema,
+			Name:         method.Name,
+			Description:  method.Description,
+			InputSchema:  method.InputSchema,
+			Protected:    !method.Public,
+			AcceptsOrgID: false,
+			Public:       method.Public,
 		})
+	}
+	webCfg.GRPCService = grpcServiceFullName()
+	webCfg.GRPCProtoImportPath = "api/api_grpc/proto"
+	webCfg.SourceLabels = map[string]string{}
+	webCfg.RESTOperations = []struct{}{}
+	if webCfg.Methods == nil {
+		webCfg.Methods = []apiMethod{}
 	}
 	writeJSON(writer, http.StatusOK, webCfg)
 }

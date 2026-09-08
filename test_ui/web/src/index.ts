@@ -1,11 +1,42 @@
 import "./styles.css";
 
-type Protocol = "jsonrpc" | "mcp" | "websocket" | "grpc";
+// 开发期 API 控制台（各 Go 服务共用同一份源码）。目录全部来自 /api/config 运行期投影：
+// 本服务方法表 + 可选的聚合后端工具 + 可选的 REST 路由；来源标签、端点、gRPC 服务名与文档页签都由
+// Go 侧注入，页面不写死任何方法、任何项目名。
+// 请求编辑器是一份 JSON：{ headers, body }（REST 再带 method / path / query），发送前拆开交 proxy。
+
+type Protocol = "jsonrpc" | "mcp" | "websocket" | "grpc" | "rest";
 
 type APIMethod = {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  source: string;
+  protected: boolean;
+  acceptsOrgId: boolean;
+  public: boolean;
+};
+
+type RESTParameter = {
+  name: string;
+  in: string;
+  required: boolean;
+  description?: string;
+  schema?: Record<string, unknown>;
+};
+
+type RESTOperation = {
+  method: string;
+  path: string;
+  operationId: string;
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  origin?: string;
+  backendMethod?: string;
+  protected: boolean;
+  parameters?: RESTParameter[];
+  requestSchema?: Record<string, unknown>;
 };
 
 type ProjectInfo = {
@@ -20,7 +51,18 @@ type WebConfig = {
   mcpEndpoint: string;
   webSocketEndpoint: string;
   grpcEndpoint: string;
+  /** 为空 = 本服务没有 REST 面，页签与端口徽标隐藏。 */
+  restEndpoint: string;
+  /** 为空 = 不显示健康端口徽标。 */
+  healthEndpoint: string;
+  /** gRPC 服务全名（如 <pkg>.APIService），调用代码片段用；由 Go 侧从 protobuf 描述符取。 */
+  grpcService: string;
+  /** grpcurl 的 -import-path，即本仓 proto 目录。 */
+  grpcProtoImportPath: string;
+  /** 来源标识 -> 导航里的功能域名；缺项按标识原样显示，空标识显示「本服务」。 */
+  sourceLabels: Record<string, string>;
   methods: APIMethod[];
+  restOperations: RESTOperation[];
   project: ProjectInfo;
 };
 
@@ -51,8 +93,21 @@ type CatalogItem = {
   rpcMethod: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  kind: "JSON-RPC" | "MCP TOOL" | "WEBSOCKET" | "gRPC";
+  kind: "JSON-RPC" | "MCP TOOL" | "WEBSOCKET" | "gRPC" | "REST";
   toolName?: string;
+  source: string;
+  protected: boolean;
+  acceptsOrgId: boolean;
+  rest?: RESTOperation;
+};
+
+// RequestEnvelope 是编辑器里那一份 JSON 的形状：headers 与 body 合一；REST 再带 method / path / query。
+type RequestEnvelope = {
+  method?: string;
+  path?: string;
+  query?: Record<string, unknown>;
+  headers: Record<string, unknown>;
+  body: Record<string, unknown>;
 };
 
 type TripleSplitController = {
@@ -74,17 +129,20 @@ const groupSelect = byId<HTMLSelectElement>("api-group");
 const functionSelect = byId<HTMLSelectElement>("api-function");
 const requestIDInput = byId<HTMLInputElement>("request-id");
 const requestBody = byId<HTMLTextAreaElement>("request-body");
-const requestHeaders = byId<HTMLTextAreaElement>("request-headers");
+const requestShapeHint = byId<HTMLElement>("request-shape-hint");
 const requestError = byId<HTMLParagraphElement>("request-error");
+const apiDescription = byId<HTMLDivElement>("api-description");
+const apiDescriptionSource = byId<HTMLElement>("api-description-source");
 const testUserNameInput = byId<HTMLInputElement>("test-user-name");
 const testEmailInput = byId<HTMLInputElement>("test-email");
 const testPhoneInput = byId<HTMLInputElement>("test-phone");
 const testPasswordInput = byId<HTMLInputElement>("test-password");
+const testAccessTokenInput = byId<HTMLInputElement>("test-access-token");
+const testOrgIDInput = byId<HTMLInputElement>("test-org-id");
 const catalogCount = byId<HTMLElement>("catalog-count");
 const codeMethodLabel = byId<HTMLElement>("code-method-label");
 const codeLanguageTag = byId<HTMLElement>("code-language-tag");
 const invocationCode = byId<HTMLPreElement>("invocation-code");
-const headersCount = byId<HTMLElement>("headers-count");
 const sendButton = byId<HTMLButtonElement>("send-request");
 const responseMeta = byId<HTMLDivElement>("response-meta");
 const responseEmpty = byId<HTMLDivElement>("response-empty");
@@ -99,18 +157,24 @@ const tripleSplitControllers = new WeakMap<
   TripleSplitController
 >();
 
-let protocol: Protocol = "jsonrpc";
+let protocol: Protocol = "mcp";
 let config: WebConfig = {
-  jsonRpcEndpoint: "http://127.0.0.1:13001",
-  mcpEndpoint: "http://127.0.0.1:13002",
-  webSocketEndpoint: "ws://127.0.0.1:13004",
-  grpcEndpoint: "grpc://127.0.0.1:13005",
+  jsonRpcEndpoint: "",
+  mcpEndpoint: "",
+  webSocketEndpoint: "",
+  grpcEndpoint: "",
+  restEndpoint: "",
+  healthEndpoint: "",
+  grpcService: "",
+  grpcProtoImportPath: "",
+  sourceLabels: {},
   methods: [],
+  restOperations: [],
   project: {
-    name: "project_template_go",
-    version: "v0.0.2",
-    bundleId: "com.project_template_go.project_template_go",
-    runMode: "Debug",
+    name: "",
+    version: "",
+    bundleId: "",
+    runMode: "",
   },
 };
 let catalogItems: CatalogItem[] = [];
@@ -126,7 +190,10 @@ const protocolLabels: Record<Protocol, string> = {
   mcp: "MCP",
   websocket: "WS",
   grpc: "gRPC",
+  rest: "REST",
 };
+const jwtTokenPlaceholder = "<access_token>";
+const orgIDPlaceholder = "<org_id>";
 
 function generateRequestID(): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -146,47 +213,70 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+// sourceLabel 把来源标识翻成导航里的功能域名：标签表由 Go 侧注入，缺项按标识原样显示，
+// 空标识（单一来源的服务）显示「本服务」。
+function sourceLabel(source: string | undefined): string {
+  const key = (source ?? "").trim();
+  if (key === "") {
+    return "本服务";
+  }
+  return config.sourceLabels[key] ?? config.sourceLabels[key.toLowerCase()] ?? key;
+}
+
 function classifyName(
   name: string,
-  fallbackDomain: string,
   fallbackGroup: string,
-): Pick<CatalogItem, "domain" | "group" | "functionName"> {
+): Pick<CatalogItem, "group" | "functionName"> {
   const parts = name.split(/[./:]+/).filter(Boolean);
-  if (parts.length >= 3) {
+  if (parts.length >= 2) {
     return {
-      domain: parts[0],
-      group: parts[1],
-      functionName: parts.slice(2).join("."),
-    };
-  }
-  if (parts.length === 2) {
-    return {
-      domain: parts[0],
-      group: fallbackGroup,
-      functionName: parts[1],
+      group: parts[0],
+      functionName: parts.slice(1).join("."),
     };
   }
   return {
-    domain: fallbackDomain,
     group: fallbackGroup,
     functionName: parts[0] || name,
   };
 }
 
 function buildCatalogItems(): CatalogItem[] {
-  return config.methods
-    .map((method) => {
-      const classified = classifyName(method.name, "Core", "General");
+  if (protocol === "rest") {
+    return config.restOperations.map((operation) => {
+      const firstSegment = operation.path.split("/").filter(Boolean)[0] ?? "root";
       return {
-        id: `api:${method.name}`,
-        ...classified,
-        rpcMethod: "tools/call",
-        toolName: method.name,
-        description: method.description || "已注册 API 方法",
-        inputSchema: method.inputSchema ?? { type: "object" },
-        kind: protocolCatalogKind(),
+        id: `rest:${operation.method} ${operation.path}`,
+        domain: sourceLabel(operation.origin),
+        group: operation.tags?.[0] ?? firstSegment,
+        functionName: `${operation.method} ${operation.path}`,
+        rpcMethod: operation.operationId,
+        description: operation.summary || operation.description || "已注册 REST 路由",
+        inputSchema: operation.requestSchema ?? { type: "object" },
+        kind: "REST",
+        toolName: operation.backendMethod,
+        source: operation.origin ?? "",
+        protected: operation.protected,
+        acceptsOrgId: operation.protected,
+        rest: operation,
       };
     });
+  }
+  return config.methods.map((method) => {
+    const classified = classifyName(method.name, "General");
+    return {
+      id: `api:${method.name}`,
+      domain: sourceLabel(method.source),
+      ...classified,
+      rpcMethod: "tools/call",
+      toolName: method.name,
+      description: method.description || "已注册 API 方法",
+      inputSchema: method.inputSchema ?? { type: "object" },
+      kind: protocolCatalogKind(),
+      source: method.source,
+      protected: method.protected,
+      acceptsOrgId: method.acceptsOrgId,
+    };
+  });
 }
 
 function protocolCatalogKind(): CatalogItem["kind"] {
@@ -197,6 +287,8 @@ function protocolCatalogKind(): CatalogItem["kind"] {
       return "WEBSOCKET";
     case "grpc":
       return "gRPC";
+    case "rest":
+      return "REST";
     default:
       return "JSON-RPC";
   }
@@ -284,6 +376,7 @@ function applyCatalogSelection(): void {
   if (!selectedItem) {
     codeMethodLabel.textContent = "no function";
     invocationCode.textContent = "";
+    renderApiDescription(null);
     return;
   }
 
@@ -297,27 +390,44 @@ function paramsForSelection(): Record<string, unknown> {
   };
 }
 
+// paramsFromSchema 按入参 schema 生成示例参数；测试账号与令牌 / 组织按字段名回填。
 function paramsFromSchema(
   schema: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const value = valueFromSchema(schema);
   if (value !== null && !Array.isArray(value) && typeof value === "object") {
     const params = value as Record<string, unknown>;
-    if (Object.prototype.hasOwnProperty.call(params, "user_name")) {
-      params.user_name = testUserNameInput.value;
-    }
-    if (Object.prototype.hasOwnProperty.call(params, "email")) {
-      params.email = testEmailInput.value;
-    }
-    if (Object.prototype.hasOwnProperty.call(params, "phone")) {
-      params.phone = testPhoneInput.value;
-    }
-    if (Object.prototype.hasOwnProperty.call(params, "password")) {
-      params.password = testPasswordInput.value;
-    }
+    fillTestAccount(params);
+    fillGateArguments(params);
     return params;
   }
   return {};
+}
+
+function fillTestAccount(params: Record<string, unknown>): void {
+  if (Object.prototype.hasOwnProperty.call(params, "user_name")) {
+    params.user_name = testUserNameInput.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(params, "email")) {
+    params.email = testEmailInput.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(params, "phone")) {
+    params.phone = testPhoneInput.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(params, "password")) {
+    params.password = testPasswordInput.value;
+  }
+}
+
+// fillGateArguments 只在 schema 声明了门禁字段时回填：jwt_token / org_id 由注册表按方法注入，
+// 页面不替方法多加一个键（后端 schema 严格键集，多一个即拒）。
+function fillGateArguments(params: Record<string, unknown>): void {
+  if (Object.prototype.hasOwnProperty.call(params, "jwt_token")) {
+    params.jwt_token = testAccessTokenInput.value || jwtTokenPlaceholder;
+  }
+  if (Object.prototype.hasOwnProperty.call(params, "org_id")) {
+    params.org_id = testOrgIDInput.value || orgIDPlaceholder;
+  }
 }
 
 function valueFromSchema(
@@ -381,6 +491,8 @@ function valueFromSchema(
   return null;
 }
 
+// defaultHeaders 按协议出默认头：REST 受保护路由带 Authorization / X-Org-Id 占位；
+// MCP 带协议版本与 tools/call 提示头；WS / gRPC 无 HTTP 头。
 function defaultHeaders(): Record<string, string> {
   if (protocol === "websocket" || protocol === "grpc") {
     return {};
@@ -394,6 +506,15 @@ function defaultHeaders(): Record<string, string> {
     headers["Mcp-Protocol-Version"] = mcpProtocolVersion;
     headers["Mcp-Method"] = "tools/call";
     headers["Mcp-Name"] = selectedItem?.toolName ?? "";
+  }
+  if (protocol === "rest") {
+    if (!selectedItem?.rest?.requestSchema) {
+      delete headers["Content-Type"];
+    }
+    if (selectedItem?.protected) {
+      headers.Authorization = `Bearer ${testAccessTokenInput.value || jwtTokenPlaceholder}`;
+      headers["X-Org-Id"] = testOrgIDInput.value || orgIDPlaceholder;
+    }
   }
   return headers;
 }
@@ -434,18 +555,58 @@ function makeBody(params: Record<string, unknown>): Record<string, unknown> {
   return body;
 }
 
+// restEnvelope 给 REST 路由出默认信封：路径参数留占位，查询参数按 schema 出示例，请求体按 schema 出示例。
+function restEnvelope(operation: RESTOperation): RequestEnvelope {
+  const query: Record<string, unknown> = {};
+  for (const parameter of operation.parameters ?? []) {
+    if (parameter.in === "query") {
+      query[parameter.name] = valueFromSchema(parameter.schema);
+    }
+  }
+  const body =
+    operation.requestSchema && ["POST", "PUT", "PATCH", "DELETE"].includes(operation.method)
+      ? paramsFromSchema(operation.requestSchema)
+      : {};
+  return {
+    method: operation.method,
+    path: operation.path,
+    query,
+    headers: defaultHeaders(),
+    body,
+  };
+}
+
+function presetEnvelope(): RequestEnvelope {
+  if (protocol === "rest" && selectedItem?.rest) {
+    return restEnvelope(selectedItem.rest);
+  }
+  return {
+    headers: defaultHeaders(),
+    body: makeBody(paramsForSelection()),
+  };
+}
+
 function applyPreset(): void {
   if (!selectedItem) {
     return;
   }
   endpointInput.value = protocolEndpoint();
   transportMethodBadge.textContent =
-    protocol === "websocket" ? "WS" : protocol === "grpc" ? "RPC" : "POST";
-  requestBody.value = JSON.stringify(makeBody(paramsForSelection()), null, 2);
-  requestHeaders.value = JSON.stringify(defaultHeaders(), null, 2);
+    protocol === "websocket"
+      ? "WS"
+      : protocol === "grpc"
+        ? "RPC"
+        : protocol === "rest"
+          ? selectedItem.rest?.method ?? "GET"
+          : "POST";
+  requestBody.value = JSON.stringify(presetEnvelope(), null, 2);
+  requestShapeHint.textContent =
+    protocol === "rest" ? "method + path + query + headers + body" : "headers + body 合一";
   codeMethodLabel.textContent =
-    selectedItem.toolName ?? selectedItem.rpcMethod;
-  updateHeadersCount();
+    protocol === "rest"
+      ? selectedItem.functionName
+      : (selectedItem.toolName ?? selectedItem.rpcMethod);
+  renderApiDescription(selectedItem);
   renderInvocationCode();
   clearRequestError();
 }
@@ -458,6 +619,8 @@ function protocolEndpoint(): string {
       return config.webSocketEndpoint;
     case "grpc":
       return config.grpcEndpoint;
+    case "rest":
+      return config.restEndpoint;
     default:
       return config.jsonRpcEndpoint;
   }
@@ -486,35 +649,70 @@ function parseJSONObject(
   return parsed as Record<string, unknown>;
 }
 
+// parseEnvelope 读编辑器里的合一 JSON；headers 缺省为空对象，body 缺省为空对象。
+function parseEnvelope(): RequestEnvelope {
+  const raw = parseJSONObject(requestBody.value, "实际 JSON");
+  const headers =
+    raw.headers !== null && !Array.isArray(raw.headers) && typeof raw.headers === "object"
+      ? (raw.headers as Record<string, unknown>)
+      : {};
+  const body =
+    raw.body !== null && !Array.isArray(raw.body) && typeof raw.body === "object"
+      ? (raw.body as Record<string, unknown>)
+      : {};
+  const query =
+    raw.query !== null && !Array.isArray(raw.query) && typeof raw.query === "object"
+      ? (raw.query as Record<string, unknown>)
+      : undefined;
+  return {
+    method: typeof raw.method === "string" ? raw.method : undefined,
+    path: typeof raw.path === "string" ? raw.path : undefined,
+    query,
+    headers,
+    body,
+  };
+}
+
+function writeEnvelope(envelope: RequestEnvelope): void {
+  const ordered: Record<string, unknown> = {};
+  if (protocol === "rest") {
+    ordered.method = envelope.method;
+    ordered.path = envelope.path;
+    ordered.query = envelope.query ?? {};
+  }
+  ordered.headers = envelope.headers;
+  ordered.body = envelope.body;
+  requestBody.value = JSON.stringify(ordered, null, 2);
+}
+
+// syncTestAccountToRequest 把顶栏账号 / 令牌 / 组织改动同步进当前请求：只改已存在的键。
 function syncTestAccountToRequest(): void {
   try {
-    const body = parseJSONObject(requestBody.value, "Request body");
-    const params = body.params;
-    if (params === null || Array.isArray(params) || typeof params !== "object") {
-      return;
+    const envelope = parseEnvelope();
+    if (protocol === "rest") {
+      fillTestAccount(envelope.body);
+      if (Object.prototype.hasOwnProperty.call(envelope.headers, "Authorization")) {
+        envelope.headers.Authorization = `Bearer ${testAccessTokenInput.value || jwtTokenPlaceholder}`;
+      }
+      if (Object.prototype.hasOwnProperty.call(envelope.headers, "X-Org-Id")) {
+        envelope.headers["X-Org-Id"] = testOrgIDInput.value || orgIDPlaceholder;
+      }
+    } else {
+      const params = envelope.body.params;
+      if (params !== null && !Array.isArray(params) && typeof params === "object") {
+        const argumentsValue = (params as Record<string, unknown>).arguments;
+        if (
+          argumentsValue !== null &&
+          !Array.isArray(argumentsValue) &&
+          typeof argumentsValue === "object"
+        ) {
+          const argumentsObject = argumentsValue as Record<string, unknown>;
+          fillTestAccount(argumentsObject);
+          fillGateArguments(argumentsObject);
+        }
+      }
     }
-    const argumentsValue = (params as Record<string, unknown>).arguments;
-    if (
-      argumentsValue === null ||
-      Array.isArray(argumentsValue) ||
-      typeof argumentsValue !== "object"
-    ) {
-      return;
-    }
-    const argumentsObject = argumentsValue as Record<string, unknown>;
-    if (Object.prototype.hasOwnProperty.call(argumentsObject, "user_name")) {
-      argumentsObject.user_name = testUserNameInput.value;
-    }
-    if (Object.prototype.hasOwnProperty.call(argumentsObject, "email")) {
-      argumentsObject.email = testEmailInput.value;
-    }
-    if (Object.prototype.hasOwnProperty.call(argumentsObject, "phone")) {
-      argumentsObject.phone = testPhoneInput.value;
-    }
-    if (Object.prototype.hasOwnProperty.call(argumentsObject, "password")) {
-      argumentsObject.password = testPasswordInput.value;
-    }
-    requestBody.value = JSON.stringify(body, null, 2);
+    writeEnvelope(envelope);
     renderInvocationCode();
   } catch (error) {
     showRequestError(errorMessage(error));
@@ -530,15 +728,6 @@ function formatJSON(textarea: HTMLTextAreaElement, label: string): void {
   }
 }
 
-function updateHeadersCount(): void {
-  try {
-    const value = parseJSONObject(requestHeaders.value, "Headers");
-    headersCount.textContent = `${Object.keys(value).length} 项`;
-  } catch {
-    headersCount.textContent = "格式错误";
-  }
-}
-
 function showRequestError(message: string): void {
   requestError.textContent = message;
 }
@@ -551,34 +740,149 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// schemaRows 把入参 schema 展开一层成表格行：字段 / 类型 / 必填 / 说明。
+function schemaRows(
+  schema: Record<string, unknown> | undefined,
+): Array<{ name: string; type: string; required: boolean; description: string }> {
+  if (!schema) {
+    return [];
+  }
+  const properties =
+    schema.properties !== null && typeof schema.properties === "object"
+      ? (schema.properties as Record<string, unknown>)
+      : {};
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : []);
+  return Object.entries(properties).map(([name, propertySchema]) => {
+    const property =
+      propertySchema !== null && typeof propertySchema === "object"
+        ? (propertySchema as Record<string, unknown>)
+        : {};
+    let type = Array.isArray(property.type)
+      ? property.type.join(" | ")
+      : typeof property.type === "string"
+        ? property.type
+        : property.$ref
+          ? "object"
+          : "any";
+    if (Array.isArray(property.enum)) {
+      type = `enum(${(property.enum as unknown[]).map(String).join(" / ")})`;
+    }
+    if (type === "array" && property.items !== null && typeof property.items === "object") {
+      const items = property.items as Record<string, unknown>;
+      type = `array<${typeof items.type === "string" ? items.type : "object"}>`;
+    }
+    return {
+      name,
+      type,
+      required: required.has(name),
+      description: typeof property.description === "string" ? property.description : "",
+    };
+  });
+}
+
+// renderApiDescription 渲染「接口说明」面板：方法名、来源、描述、门禁、入参表；REST 项再带 method + path + 参数。
+function renderApiDescription(item: CatalogItem | null): void {
+  if (!item) {
+    apiDescriptionSource.textContent = "—";
+    apiDescription.innerHTML = '<p class="description-empty">没有可选方法</p>';
+    return;
+  }
+  apiDescriptionSource.textContent = `来源 · ${item.domain}`;
+  const parts: string[] = [];
+  const title = item.rest ? `${item.rest.method} ${item.rest.path}` : (item.toolName ?? item.rpcMethod);
+  parts.push(`<div class="description-title"><code>${escapeHTML(title)}</code></div>`);
+  const badges: string[] = [`<span class="description-badge">${escapeHTML(item.kind)}</span>`];
+  badges.push(
+    item.protected
+      ? '<span class="description-badge is-protected">受保护 · 需令牌</span>'
+      : '<span class="description-badge is-public">公开</span>',
+  );
+  if (item.acceptsOrgId && !item.rest) {
+    badges.push('<span class="description-badge">按活动组织注入 org_id</span>');
+  }
+  if (item.rest?.backendMethod) {
+    badges.push(`<span class="description-badge">后端方法 · ${escapeHTML(item.rest.backendMethod)}</span>`);
+  }
+  if (item.rest?.operationId) {
+    badges.push(`<span class="description-badge">operationId · ${escapeHTML(item.rest.operationId)}</span>`);
+  }
+  parts.push(`<div class="description-badges">${badges.join("")}</div>`);
+  parts.push(`<p class="description-text">${escapeHTML(item.description)}</p>`);
+  if (item.rest?.description && item.rest.description !== item.description) {
+    parts.push(`<p class="description-text">${escapeHTML(item.rest.description)}</p>`);
+  }
+  if (item.rest && (item.rest.parameters?.length ?? 0) > 0) {
+    parts.push('<div class="description-section">参数</div>');
+    parts.push(
+      `<table class="description-table"><thead><tr><th>名称</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody>${(item.rest.parameters ?? [])
+        .map(
+          (parameter) =>
+            `<tr><td><code>${escapeHTML(parameter.name)}</code></td><td>${escapeHTML(parameter.in)}</td><td>${parameter.required ? "是" : "否"}</td><td>${escapeHTML(parameter.description ?? "")}</td></tr>`,
+        )
+        .join("")}</tbody></table>`,
+    );
+  }
+  const rows = schemaRows(item.inputSchema);
+  parts.push(`<div class="description-section">${item.rest ? "请求体" : "入参"}</div>`);
+  if (rows.length === 0) {
+    parts.push('<p class="description-empty">无入参</p>');
+  } else {
+    parts.push(
+      `<table class="description-table"><thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>${rows
+        .map(
+          (row) =>
+            `<tr><td><code>${escapeHTML(row.name)}</code></td><td>${escapeHTML(row.type)}</td><td>${row.required ? "是" : "否"}</td><td>${escapeHTML(row.description)}</td></tr>`,
+        )
+        .join("")}</tbody></table>`,
+    );
+  }
+  apiDescription.innerHTML = parts.join("");
+}
+
+// restTargetURL 把信封里的 path / query 拼到 REST 端点上；路径参数占位 {name} 原样保留给用户改。
+function restTargetURL(envelope: RequestEnvelope): string {
+  const base = endpointInput.value.replace(/\/+$/, "");
+  const path = (envelope.path ?? "/").startsWith("/") ? (envelope.path ?? "/") : `/${envelope.path}`;
+  const query = Object.entries(envelope.query ?? {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  return `${base}${path}${query ? `?${query}` : ""}`;
+}
+
 async function sendRequest(): Promise<void> {
   clearRequestError();
-  let body: Record<string, unknown>;
-  let headers: Record<string, unknown>;
+  let envelope: RequestEnvelope;
   try {
-    body = parseJSONObject(requestBody.value, "Request body");
-    headers = parseJSONObject(requestHeaders.value, "Headers");
+    envelope = parseEnvelope();
   } catch (error) {
     showRequestError(errorMessage(error));
     return;
   }
+  const body = envelope.body;
   if (protocol === "grpc") {
     requestIDInput.value = generateRequestID();
     body.requestId = requestIDInput.value;
     delete body.id;
-  } else if (body.method === "notifications/initialized") {
-    delete body.id;
-  } else {
-    requestIDInput.value = generateRequestID();
-    body.id = requestIDInput.value;
+  } else if (protocol !== "rest") {
+    if (body.method === "notifications/initialized") {
+      delete body.id;
+    } else {
+      requestIDInput.value = generateRequestID();
+      body.id = requestIDInput.value;
+    }
   }
-  requestBody.value = JSON.stringify(body, null, 2);
+  writeEnvelope(envelope);
   renderInvocationCode();
 
   const headerStrings: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
+  for (const [name, value] of Object.entries(envelope.headers)) {
     headerStrings[name] = String(value);
   }
+  const isREST = protocol === "rest";
+  const method = isREST ? (envelope.method ?? "GET").toUpperCase() : "POST";
+  const url = isREST ? restTargetURL(envelope) : endpointInput.value;
+  const hasBody = !isREST || !["GET", "HEAD"].includes(method);
 
   setLoading(true);
   const startedAt = performance.now();
@@ -588,10 +892,10 @@ async function sendRequest(): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         transport: protocol,
-        url: endpointInput.value,
-        method: "POST",
+        url,
+        method,
         headers: headerStrings,
-        body: JSON.stringify(body),
+        body: hasBody ? JSON.stringify(body) : "",
       }),
     });
     const result = (await response.json()) as ProxyResponse | { error: string };
@@ -805,19 +1109,25 @@ function escapeHTML(value: string): string {
   );
 }
 
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 function buildCommand(): string {
-  let headers: Record<string, unknown> = {};
+  let envelope: RequestEnvelope = { headers: {}, body: {} };
   try {
-    headers = parseJSONObject(requestHeaders.value, "Headers");
+    envelope = parseEnvelope();
   } catch {
-    // Copy the usable portion even while the header editor is invalid.
+    // Copy the usable portion even while the editor is invalid.
   }
-  const headerArgs = Object.entries(headers)
+  const headerArgs = Object.entries(envelope.headers)
     .map(([name, value]) => `-H ${shellQuote(`${name}: ${String(value)}`)}`)
     .join(" \\\n  ");
+  const bodyJSON = JSON.stringify(envelope.body);
   if (protocol === "websocket") {
     return [
-      `printf '%s' ${shellQuote(requestBody.value)}`,
+      `printf '%s' ${shellQuote(bodyJSON)}`,
       `websocat -1 ${shellQuote(endpointInput.value)}`,
     ].join(" | ");
   }
@@ -825,27 +1135,33 @@ function buildCommand(): string {
     const endpoint = endpointInput.value.replace(/^grpc:\/\//, "");
     return [
       "grpcurl -plaintext",
-      "-import-path gcs_api/api_grpc/proto",
+      `-import-path ${config.grpcProtoImportPath || "<proto-dir>"}`,
       "-proto api.proto",
-      `-d ${shellQuote(requestBody.value)}`,
+      `-d ${shellQuote(bodyJSON)}`,
       shellQuote(endpoint),
-      "project_template_go.api.v1.APIService/Call",
+      `${config.grpcService || "<pkg>.APIService"}/Call`,
     ].join(" ");
+  }
+  if (protocol === "rest") {
+    const method = (envelope.method ?? "GET").toUpperCase();
+    const parts = [
+      `curl -X ${method} ${shellQuote(restTargetURL(envelope))}`,
+      headerArgs,
+      ["GET", "HEAD"].includes(method) ? "" : `--data-raw ${shellQuote(bodyJSON)}`,
+    ].filter(Boolean);
+    return parts.join(" \\\n  ");
   }
   const parts = [
     `curl -X POST ${shellQuote(endpointInput.value)}`,
     headerArgs,
-    `--data-raw ${shellQuote(requestBody.value)}`,
+    `--data-raw ${shellQuote(bodyJSON)}`,
   ].filter(Boolean);
   return parts.join(" \\\n  ");
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
 function invocationFunctionName(): string {
-  const source = selectedItem?.toolName ?? selectedItem?.functionName ?? "api";
+  const source =
+    selectedItem?.toolName ?? selectedItem?.rest?.operationId ?? selectedItem?.functionName ?? "api";
   const words = source.split(/[^a-zA-Z0-9]+/).filter(Boolean);
   const pascal = words
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -875,8 +1191,11 @@ function stringHeaders(
 
 function buildGoHTTPInvocation(
   functionName: string,
+  method: string,
+  url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
+  withBody: boolean,
 ): string {
   const headerLines = Object.entries(headers)
     .map(
@@ -884,10 +1203,12 @@ function buildGoHTTPInvocation(
         `\trequest.Header.Set(${goString(name)}, ${goString(value)})`,
     )
     .join("\n");
-  return `// imports: bytes, context, fmt, io, net/http
+  const bodyLine = withBody
+    ? `\tbody := []byte(${goString(JSON.stringify(body))})\n\trequest, err := http.NewRequestWithContext(ctx, ${goString(method)}, ${goString(url)}, bytes.NewReader(body))`
+    : `\trequest, err := http.NewRequestWithContext(ctx, ${goString(method)}, ${goString(url)}, nil)`;
+  return `// imports: ${withBody ? "bytes, " : ""}context, fmt, io, net/http
 func Call${functionName}(ctx context.Context) ([]byte, error) {
-\tbody := []byte(${goString(JSON.stringify(body))})
-\trequest, err := http.NewRequestWithContext(ctx, http.MethodPost, ${goString(endpointInput.value)}, bytes.NewReader(body))
+${bodyLine}
 \tif err != nil {
 \t\treturn nil, err
 \t}
@@ -971,31 +1292,45 @@ func Call${functionName}(ctx context.Context) (*api_grpc_protobuf.CallResponse, 
 }`;
 }
 
-function buildGoInvocation(
-  body: Record<string, unknown>,
-  headers: Record<string, string>,
-): string {
+function buildGoInvocation(envelope: RequestEnvelope): string {
   const functionName = invocationFunctionName();
+  const headers = stringHeaders(envelope.headers);
   switch (protocol) {
     case "grpc":
-      return buildGoGRPCInvocation(functionName, body);
+      return buildGoGRPCInvocation(functionName, envelope.body);
     case "websocket":
-      return buildGoWebSocketInvocation(functionName, body);
+      return buildGoWebSocketInvocation(functionName, envelope.body);
+    case "rest": {
+      const method = (envelope.method ?? "GET").toUpperCase();
+      return buildGoHTTPInvocation(
+        functionName,
+        method,
+        restTargetURL(envelope),
+        envelope.body,
+        headers,
+        !["GET", "HEAD"].includes(method),
+      );
+    }
     default:
-      return buildGoHTTPInvocation(functionName, body, headers);
+      return buildGoHTTPInvocation(functionName, "POST", endpointInput.value, envelope.body, headers, true);
   }
 }
 
 function buildTSHTTPInvocation(
   functionName: string,
+  method: string,
+  url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
+  withBody: boolean,
 ): string {
+  const bodyLine = withBody
+    ? `\n    body: JSON.stringify(${indentCode(JSON.stringify(body, null, 2), 4).trimStart()}),`
+    : "";
   return `export async function call${functionName}(): Promise<unknown> {
-  const response = await fetch(${JSON.stringify(endpointInput.value)}, {
-    method: "POST",
-    headers: ${indentCode(JSON.stringify(headers, null, 2), 4).trimStart()},
-    body: JSON.stringify(${indentCode(JSON.stringify(body, null, 2), 4).trimStart()}),
+  const response = await fetch(${JSON.stringify(url)}, {
+    method: ${JSON.stringify(method)},
+    headers: ${indentCode(JSON.stringify(headers, null, 2), 4).trimStart()},${bodyLine}
   });
   if (!response.ok) {
     throw new Error(\`request failed: \${response.status} \${await response.text()}\`);
@@ -1035,7 +1370,7 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 
 export async function call${functionName}(): Promise<unknown> {
-  const definition = protoLoader.loadSync("gcs_api/api_grpc/proto/api.proto", {
+  const definition = protoLoader.loadSync("cg_api/api_grpc/proto/api.proto", {
     keepCase: false,
     longs: String,
     enums: String,
@@ -1043,7 +1378,7 @@ export async function call${functionName}(): Promise<unknown> {
     oneofs: true,
   });
   const grpcObject = grpc.loadPackageDefinition(definition) as any;
-  const Client = grpcObject.project_template_go.api.v1.APIService;
+  const Client = grpcObject.${config.grpcService || "<pkg>.APIService"};
   const client = new Client(${JSON.stringify(endpoint)}, grpc.credentials.createInsecure());
   const request = ${indentCode(JSON.stringify(body, null, 2), 2).trimStart()};
 
@@ -1057,32 +1392,38 @@ export async function call${functionName}(): Promise<unknown> {
 }`;
 }
 
-function buildTSInvocation(
-  body: Record<string, unknown>,
-  headers: Record<string, string>,
-): string {
+function buildTSInvocation(envelope: RequestEnvelope): string {
   const functionName = invocationFunctionName();
+  const headers = stringHeaders(envelope.headers);
   switch (protocol) {
     case "grpc":
-      return buildTSGRPCInvocation(functionName, body);
+      return buildTSGRPCInvocation(functionName, envelope.body);
     case "websocket":
-      return buildTSWebSocketInvocation(functionName, body);
+      return buildTSWebSocketInvocation(functionName, envelope.body);
+    case "rest": {
+      const method = (envelope.method ?? "GET").toUpperCase();
+      return buildTSHTTPInvocation(
+        functionName,
+        method,
+        restTargetURL(envelope),
+        envelope.body,
+        headers,
+        !["GET", "HEAD"].includes(method),
+      );
+    }
     default:
-      return buildTSHTTPInvocation(functionName, body, headers);
+      return buildTSHTTPInvocation(functionName, "POST", endpointInput.value, envelope.body, headers, true);
   }
 }
 
 function renderInvocationCode(): void {
   codeLanguageTag.textContent = codeLanguage.toUpperCase();
   try {
-    const body = parseJSONObject(requestBody.value, "Request body");
-    const headers = stringHeaders(
-      parseJSONObject(requestHeaders.value, "Headers"),
-    );
+    const envelope = parseEnvelope();
     invocationCode.textContent =
       codeLanguage === "go"
-        ? buildGoInvocation(body, headers)
-        : buildTSInvocation(body, headers);
+        ? buildGoInvocation(envelope)
+        : buildTSInvocation(envelope);
   } catch (error) {
     invocationCode.textContent = `// ${errorMessage(error)}`;
   }
@@ -1109,22 +1450,43 @@ function endpointPort(endpoint: string): string {
   }
 }
 
+
 function applyProjectInfo(): void {
   byId<HTMLElement>("project-name").textContent = config.project.name;
   byId<HTMLElement>("project-version").textContent = config.project.version;
   byId<HTMLElement>("project-bundle").textContent = config.project.bundleId;
   byId<HTMLElement>("project-mode").textContent = config.project.runMode;
-  byId<HTMLElement>("jsonrpc-port").textContent = endpointPort(
-    config.jsonRpcEndpoint,
-  );
+  byId<HTMLElement>("jsonrpc-port").textContent = endpointPort(config.jsonRpcEndpoint);
   byId<HTMLElement>("mcp-port").textContent = endpointPort(config.mcpEndpoint);
-  byId<HTMLElement>("websocket-port").textContent = endpointPort(
-    config.webSocketEndpoint,
+  byId<HTMLElement>("websocket-port").textContent = endpointPort(config.webSocketEndpoint);
+  byId<HTMLElement>("grpc-port").textContent = endpointPort(config.grpcEndpoint);
+  byId<HTMLElement>("rest-port").textContent = endpointPort(config.restEndpoint);
+  byId<HTMLElement>("health-port").textContent = endpointPort(config.healthEndpoint);
+  byId<HTMLElement>("rest-fact").hidden = config.restEndpoint === "";
+  byId<HTMLElement>("health-fact").hidden = config.healthEndpoint === "";
+  // 端点为空的协议面不显示页签；当前选中的协议被隐藏时退回 MCP。
+  const endpointOf: Record<Protocol, string> = {
+    jsonrpc: config.jsonRpcEndpoint,
+    mcp: config.mcpEndpoint,
+    websocket: config.webSocketEndpoint,
+    grpc: config.grpcEndpoint,
+    rest: config.restEndpoint,
+  };
+  for (const tab of document.querySelectorAll<HTMLButtonElement>(".protocol-tab")) {
+    const key = tab.dataset.protocol as Protocol;
+    tab.hidden = endpointOf[key] === "";
+  }
+  if (endpointOf[protocol] === "" && config.mcpEndpoint !== "") {
+    protocol = "mcp";
+  }
+  const labels = unique(
+    config.methods.map((method) => sourceLabel(method.source)).concat(
+      config.restOperations.map((operation) => sourceLabel(operation.origin)),
+    ),
   );
-  byId<HTMLElement>("grpc-port").textContent = endpointPort(
-    config.grpcEndpoint,
-  );
-  document.title = `${config.project.name} · API Lab`;
+  byId<HTMLElement>("source-summary").textContent =
+    labels.length > 1 ? `${labels.join(" · ")} 多路真源` : `${labels[0] ?? "本服务"} 方法表`;
+  document.title = `${config.project.name || "API"} · API Lab`;
 }
 
 async function loadConfig(): Promise<void> {
@@ -1138,6 +1500,8 @@ async function loadConfig(): Promise<void> {
       ...config,
       ...loadedConfig,
       methods: loadedConfig.methods ?? config.methods,
+      restOperations: loadedConfig.restOperations ?? config.restOperations,
+      sourceLabels: loadedConfig.sourceLabels ?? config.sourceLabels,
       project: {
         ...config.project,
         ...loadedConfig.project,
@@ -1494,17 +1858,15 @@ domainSelect.addEventListener("change", () => refreshGroups());
 groupSelect.addEventListener("change", () => refreshFunctions());
 functionSelect.addEventListener("change", applyCatalogSelection);
 requestBody.addEventListener("input", renderInvocationCode);
-requestHeaders.addEventListener("input", () => {
-  updateHeadersCount();
-  renderInvocationCode();
-});
 endpointInput.addEventListener("input", renderInvocationCode);
 testUserNameInput.addEventListener("input", syncTestAccountToRequest);
 testEmailInput.addEventListener("input", syncTestAccountToRequest);
 testPhoneInput.addEventListener("input", syncTestAccountToRequest);
 testPasswordInput.addEventListener("input", syncTestAccountToRequest);
+testAccessTokenInput.addEventListener("input", syncTestAccountToRequest);
+testOrgIDInput.addEventListener("input", syncTestAccountToRequest);
 byId<HTMLButtonElement>("format-request").addEventListener("click", () => {
-  formatJSON(requestBody, "Request body");
+  formatJSON(requestBody, "实际 JSON");
   renderInvocationCode();
 });
 byId<HTMLButtonElement>("reset-request").addEventListener("click", applyPreset);
@@ -1559,6 +1921,11 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+for (const tab of document.querySelectorAll<HTMLButtonElement>(".protocol-tab")) {
+  const active = tab.dataset.protocol === protocol;
+  tab.classList.toggle("is-active", active);
+  tab.setAttribute("aria-pressed", String(active));
+}
 initializeTripleSplitViews();
 initializeSplitViews();
 renderHistory();

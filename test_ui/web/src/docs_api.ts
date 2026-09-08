@@ -1,5 +1,5 @@
-// docs_api 子功能页：渲染由 test_ui 服务在 /docs_api 页面内注入的 API 方法文档；
-// 文档唯一事实源在仓库 docs/ 目录，对外不提供任何原始文件路由。
+// docs_api 子功能页：渲染由 test_ui 服务在 /docs_api 页面内注入的两份对外文档（REST 面 / MCP 面）；
+// 文档唯一事实源在仓库 docs/ 目录（gen_api_docs.sh 生成），对外不提供任何原始文件路由。
 import "./docs_api.css";
 
 interface TocItem {
@@ -188,7 +188,7 @@ function renderMarkdown(markdown: string): { html: string; toc: TocItem[] } {
 // buildToc 构建左侧分类树：H1 为父节点（有方法子节点时可折叠，点击开合；无子节点时直接跳转），
 // H2 方法为缩进子节点。
 function buildToc(toc: TocItem[]): void {
-  const nav = document.getElementById("toc");
+  const nav = document.getElementById("toc-body");
   if (!nav) {
     return;
   }
@@ -225,21 +225,73 @@ function buildToc(toc: TocItem[]): void {
   nav.innerHTML = out.join("");
 }
 
-function loadDoc(): void {
-  const markdown = (window as { __API_DOC_SOURCE__?: unknown }).__API_DOC_SOURCE__;
+// 文档源由 test_ui 服务注入：[{ key, label, markdown }]，一份就不出页签，多份按注入顺序出页签。
+type DocSource = { key: string; label: string; markdown: string };
+function docSources(): DocSource[] {
+  const injected = (window as { __API_DOC_SOURCES__?: unknown }).__API_DOC_SOURCES__;
+  if (!Array.isArray(injected)) {
+    return [];
+  }
+  const out: DocSource[] = [];
+  for (const entry of injected) {
+    if (entry === null || typeof entry !== "object") continue;
+    const { key, label, markdown } = entry as Record<string, unknown>;
+    if (typeof key === "string" && key !== "" && typeof markdown === "string" && markdown !== "") {
+      out.push({ key, label: typeof label === "string" && label !== "" ? label : key, markdown });
+    }
+  }
+  return out;
+}
+function renderDoc(key: string): void {
+  const source = docSources().find((item) => item.key === key);
+  const doc = document.getElementById("doc");
   // 无注入内容时保持空白页，与 API 侧 Home 空响应同一姿态，不输出任何提示。
-  if (typeof markdown !== "string" || markdown === "") {
+  if (!source) {
+    if (doc) {
+      doc.innerHTML = "";
+    }
+    buildToc([]);
     return;
   }
-  const rendered = renderMarkdown(markdown);
-  const doc = document.getElementById("doc");
+  const rendered = renderMarkdown(source.markdown);
   if (doc) {
     doc.innerHTML = rendered.html;
   }
   buildToc(rendered.toc);
+  for (const tab of document.querySelectorAll<HTMLButtonElement>(".doc-tab")) {
+    const active = tab.dataset.doc === key;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+  }
+}
+function loadDoc(): void {
+  const sources = docSources();
+  const switchBar = document.getElementById("doc-switch");
+  if (switchBar) {
+    switchBar.hidden = sources.length <= 1;
+    switchBar.innerHTML = sources
+      .map(
+        (source) =>
+          `<button class="doc-tab" type="button" role="tab" aria-selected="false" data-doc="${escapeHtml(source.key)}">${escapeHtml(source.label)}</button>`,
+      )
+      .join("");
+  }
+  const requested = new URLSearchParams(location.search).get("doc");
+  const initial = sources.find((item) => item.key === requested)?.key ?? sources[0]?.key ?? "";
+  for (const tab of document.querySelectorAll<HTMLButtonElement>(".doc-tab")) {
+    tab.addEventListener("click", () => {
+      const key = tab.dataset.doc ?? "";
+      const url = new URL(location.href);
+      url.searchParams.set("doc", key);
+      url.hash = "";
+      history.replaceState(null, "", url);
+      renderDoc(key);
+      window.scrollTo(0, 0);
+    });
+  }
+  renderDoc(initial);
   if (location.hash) {
     document.getElementById(location.hash.slice(1))?.scrollIntoView();
   }
 }
-
 loadDoc();

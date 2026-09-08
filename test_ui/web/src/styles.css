@@ -1515,3 +1515,86 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 接口说明面板（占原 Headers 编辑器位置） */
+.api-description-editor {
+  min-height: 0;
+}
+.api-description {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line, #d8dbe3);
+  border-radius: 10px;
+  background: var(--surface-muted, #f7f8fb);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.api-description .description-title code {
+  font-size: 13px;
+  font-weight: 700;
+  word-break: break-all;
+}
+.api-description .description-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.api-description .description-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #cfd4de;
+  background: #fff;
+  font-size: 11px;
+  color: #4b5160;
+}
+.api-description .description-badge.is-protected {
+  border-color: #f0b06b;
+  background: #fff5e8;
+  color: #9a5a00;
+}
+.api-description .description-badge.is-public {
+  border-color: #9bd3ab;
+  background: #ecfaf0;
+  color: #1f6b3a;
+}
+.api-description .description-text {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.api-description .description-section {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+.api-description .description-empty {
+  color: #8a91a0;
+  margin: 4px 0;
+}
+.api-description .description-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.api-description .description-table th,
+.api-description .description-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 4px 6px;
+  border-bottom: 1px solid #e5e8ef;
+}
+.api-description .description-table th {
+  color: #6b7280;
+  font-weight: 600;
+}
+.api-description .description-table code {
+  font-size: 11.5px;
+  word-break: break-all;
+}

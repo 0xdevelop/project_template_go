@@ -110,4 +110,5 @@ function handlerunMode() {
 }
 
 
-handlerunMode "$1" && toBuild
+# test_ui 前端随打包现场构建（dist 不进仓；缺 bun 直接失败，CI 工作流负责装 bun）。
+handlerunMode "$1" && ./gen_test_ui.sh && toBuild
