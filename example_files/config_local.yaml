@@ -8,20 +8,24 @@ mysql_cfg: # Mysql configurations
 api_cfg: # API configurations
   api_cfg_jsonRPC: # API configurations with JSON-RPC
     enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
     port: 13001
     encryption_enabled: false
   api_cfg_mcp: # API configurations with MCP
     enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
     port: 13002
     mcp_transport_type: "streamable-http"
   api_cfg_websocket: # API configurations with WebSocket
     enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
     port: 13004
     allowed_origins:
     - "127.0.0.1:*"
     - "localhost:*"
   api_cfg_grpc: # API configurations with gRPC
     enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
     port: 13005
 policy_cfg: # Policy scheduling configurations
   policy_duration: "10s" # 定期轮询事项执行完一次到下一次的间隔，Go duration 字符串

@@ -130,11 +130,11 @@ func main() {
 				// 启动维护调度域内部异步大循环
 				policy.PolicyServicesStart()
 
-				if config.GlobalConfig.ApiCfg != nil {
-					api.StartAPIServices(config.GlobalConfig.ApiCfg)
-				} else {
-					gtbox_log.LogErrorf("api config was not initialized")
+				if err := config.GlobalConfig.ApiCfg.Validate(); err != nil {
+					gtbox_log.LogErrorf("api config invalid: %v; refusing to start", err)
+					return
 				}
+				api.StartAPIServices(config.GlobalConfig.ApiCfg)
 
 				if config.CurrentApp.CurrentRunMode != gtbox.RunModeRelease {
 					test_ui.LoadTestWeb()

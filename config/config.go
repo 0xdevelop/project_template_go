@@ -224,6 +224,8 @@ func SaveConfig(file string, content *FileConfig) error {
 func generateDefaultConfig() *FileConfig {
 	authGateEnabledDefault := true
 	aport := 13001
+	// 生成的缺省配置只监听本机；对外部署由运维改成 0.0.0.0，不在代码里兜底。
+	bindLocal := "127.0.0.1"
 	fileCfg := &FileConfig{
 		MysqlCfg: &db_config.MysqlConfig{
 			DBName:     "test_db",
@@ -236,25 +238,29 @@ func generateDefaultConfig() *FileConfig {
 		ApiCfg: &api_config.ApiConfig{
 			APICfgJsonRPC: &api_config_jsonRPC.APIConfigJsonRPC{
 				Enabled:           true,
+				BindAddress:       bindLocal,
 				Port:              aport,
 				EncryptionEnabled: false,
 			},
 			APICfgMCP: &api_config_mcp.APIConfigMCP{
 				Enabled:          true,
+				BindAddress:      bindLocal,
 				Port:             aport + 1,
 				MCPTransportType: api_config_mcp.MCPTransportTypeStreamableHTTP,
 			},
 			APICfgWebSocket: &api_config_websocket.APIConfigWebSocket{
-				Enabled: true,
-				Port:    aport + 3,
+				Enabled:     true,
+				BindAddress: bindLocal,
+				Port:        aport + 3,
 				AllowedOrigins: []string{
 					"127.0.0.1:*",
 					"localhost:*",
 				},
 			},
 			APICfgGRPC: &api_config_grpc.APIConfigGRPC{
-				Enabled: true,
-				Port:    aport + 4,
+				Enabled:     true,
+				BindAddress: bindLocal,
+				Port:        aport + 4,
 			},
 		},
 		PolicyCfg: &policy_config.PolicyConfig{

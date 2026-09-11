@@ -3,9 +3,9 @@ package api_mcp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/0xdevelop/project_template_go/api/api_common"
@@ -37,6 +37,10 @@ func StartAPIServiceWithMCP(apiCfgMCP *api_config_mcp.APIConfigMCP) {
 		gtbox_log.LogErrorf("MCP API port must be between 1 and 65535")
 		return
 	}
+	if apiCfgMCP.BindAddress == "" {
+		gtbox_log.LogErrorf("api_cfg.api_cfg_mcp.bind_address is required")
+		return
+	}
 
 	muxRouter := http.NewServeMux()
 	muxRouter.HandleFunc("GET /{$}", api_common.HomeHandler)
@@ -44,7 +48,7 @@ func StartAPIServiceWithMCP(apiCfgMCP *api_config_mcp.APIConfigMCP) {
 	muxRouter.Handle("POST /{$}", newMCPHTTPHandler())
 	muxRouter.HandleFunc("/", api_common.HomeHandler)
 
-	addr := fmt.Sprintf("127.0.0.1:%d", apiCfgMCP.Port)
+	addr := net.JoinHostPort(apiCfgMCP.BindAddress, strconv.Itoa(apiCfgMCP.Port))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		gtbox_log.LogErrorf("Failed to start MCP server: %v", err)

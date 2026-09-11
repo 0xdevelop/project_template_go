@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_grpc/api_config_grpc"
 	api_grpc_protobuf "github.com/0xdevelop/project_template_go/api/api_grpc/protobuf"
@@ -45,7 +47,7 @@ func (server *apiServer) Call(ctx context.Context, request *api_grpc_protobuf.Ca
 		request.GetRequestId(),
 	)
 	result, err := api_executer.APIExecuter(
-		ctx,
+		api_auth_session.WithBearerToken(ctx, grpcIncomingMetadata(ctx, "authorization")),
 		request.GetMethod(),
 		params,
 		encryptionKey,
@@ -79,15 +81,19 @@ func callToolResultStruct(result *api_executer.CallToolResult) (*structpb.Struct
 }
 
 func grpcUserAgent(ctx context.Context) string {
+	return grpcIncomingMetadata(ctx, "user-agent")
+}
+
+func grpcIncomingMetadata(ctx context.Context, key string) string {
 	incomingMetadata, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return ""
 	}
-	userAgents := incomingMetadata.Get("user-agent")
-	if len(userAgents) == 0 {
+	values := incomingMetadata.Get(key)
+	if len(values) == 0 {
 		return ""
 	}
-	return userAgents[0]
+	return values[0]
 }
 
 func newGRPCServer() *grpc.Server {
@@ -109,8 +115,12 @@ func StartAPIServiceWithGRPC(apiCfgGRPC *api_config_grpc.APIConfigGRPC) {
 		gtbox_log.LogErrorf("gRPC API port must be between 1 and 65535")
 		return
 	}
+	if apiCfgGRPC.BindAddress == "" {
+		gtbox_log.LogErrorf("api_cfg.api_cfg_grpc.bind_address is required")
+		return
+	}
 
-	addr := fmt.Sprintf("0.0.0.0:%d", apiCfgGRPC.Port)
+	addr := net.JoinHostPort(apiCfgGRPC.BindAddress, strconv.Itoa(apiCfgGRPC.Port))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		gtbox_log.LogErrorf("Failed to start gRPC server: %v", err)
@@ -120,7 +130,7 @@ func StartAPIServiceWithGRPC(apiCfgGRPC *api_config_grpc.APIConfigGRPC) {
 	server := newGRPCServer()
 	grpcServer = server
 	go func() {
-		gtbox_log.LogInfof("gRPC server Run On  [tcp://127.0.0.1:%d]", apiCfgGRPC.Port)
+		gtbox_log.LogInfof("gRPC server Run On  [tcp://%s]", addr)
 		if serveErr := server.Serve(listener); serveErr != nil &&
 			!errors.Is(serveErr, grpc.ErrServerStopped) {
 			gtbox_log.LogErrorf(

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_common"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
@@ -71,7 +73,7 @@ func serveWebSocket(
 	defer connection.CloseNow()
 	connection.SetReadLimit(webSocketMaxMessageSize)
 	handleWebSocketConnection(
-		serverContext,
+		api_auth_session.WithBearerToken(serverContext, request.Header.Get("Authorization")),
 		connection,
 		request.UserAgent(),
 	)
@@ -186,8 +188,12 @@ func StartAPIServiceWithWebSocket(
 		gtbox_log.LogErrorf("WebSocket API port must be between 1 and 65535")
 		return
 	}
+	if apiCfgWebSocket.BindAddress == "" {
+		gtbox_log.LogErrorf("api_cfg.api_cfg_websocket.bind_address is required")
+		return
+	}
 
-	addr := fmt.Sprintf("0.0.0.0:%d", apiCfgWebSocket.Port)
+	addr := net.JoinHostPort(apiCfgWebSocket.BindAddress, strconv.Itoa(apiCfgWebSocket.Port))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		gtbox_log.LogErrorf("Failed to start WebSocket server: %v", err)
@@ -203,7 +209,7 @@ func StartAPIServiceWithWebSocket(
 	webSocketCancel = cancel
 	webSocketHTTPServer = server
 	go func() {
-		gtbox_log.LogInfof("WebSocket server Run On  [ws://127.0.0.1:%d]", apiCfgWebSocket.Port)
+		gtbox_log.LogInfof("WebSocket server Run On  [ws://%s]", addr)
 		if serveErr := server.Serve(listener); serveErr != nil &&
 			!errors.Is(serveErr, http.ErrServerClosed) {
 			gtbox_log.LogErrorf(

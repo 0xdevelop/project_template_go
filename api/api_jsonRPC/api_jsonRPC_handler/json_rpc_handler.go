@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_request"
@@ -30,7 +31,7 @@ func APIJsonRPCHandler(w http.ResponseWriter, r *http.Request) {
 
 	encryptionKey := fmt.Sprintf("%s/%s", r.UserAgent(), request.IDString())
 	result, err := api_executer.APIExecuter(
-		r.Context(),
+		api_auth_session.WithBearerToken(r.Context(), r.Header.Get("Authorization")),
 		request.Method,
 		request.Params,
 		encryptionKey,

@@ -26,6 +26,11 @@
 200，`isError=true`，`content[0].text` 为
 `{"error_code":...,"error_msg":"..."}`。
 
+**凭证怎么带**：除 Public 方法（`test`、验证码、注册、登录、refresh）外，每个方法都经统一
+准入门禁。四种协议统一以 HTTP `Authorization: Bearer <jwt_token>` 头（gRPC 为 `authorization`
+metadata）携带凭证；也可显式放在 `arguments.jwt_token`（优先于头，门禁验证后移除，业务方法不可见）。
+MCP `tools/list` 只暴露业务入参，不含 `jwt_token`。
+
 **方法节怎么读**：每个方法节给出方法语义、`arguments` **传参举例**（必填字段的
 实际请求形态，占位值按真实值替换）与 `arguments` **JSON Schema**（机器可校验的
 约束说明——`required` 数组表示「哪些字段必填」，`properties` 内是各字段
@@ -349,10 +354,10 @@
 `arguments` 传参举例（仅含必填字段）：
 
 ```json
-{
-  "jwt_token": "<jwt_token>"
-}
+{}
 ```
+
+可选字段：`jwt_token`。
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
@@ -361,14 +366,12 @@
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
     }
   },
-  "required": [
-    "jwt_token"
-  ],
   "type": "object"
 }
 ```
@@ -380,10 +383,10 @@
 `arguments` 传参举例（仅含必填字段）：
 
 ```json
-{
-  "jwt_token": "<jwt_token>"
-}
+{}
 ```
+
+可选字段：`jwt_token`。
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
@@ -392,14 +395,12 @@
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
     }
   },
-  "required": [
-    "jwt_token"
-  ],
   "type": "object"
 }
 ```
@@ -445,10 +446,11 @@
 
 ```json
 {
-  "jwt_token": "<jwt_token>",
   "nick_name": "<nick_name>"
 }
 ```
+
+可选字段：`jwt_token`。
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
@@ -457,6 +459,7 @@
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -468,7 +471,6 @@
     }
   },
   "required": [
-    "jwt_token",
     "nick_name"
   ],
   "type": "object"
@@ -485,10 +487,11 @@
 
 ```json
 {
-  "jwt_token": "<jwt_token>",
   "task_id": "<task_id>"
 }
 ```
+
+可选字段：`jwt_token`。
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
@@ -497,6 +500,7 @@
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -508,7 +512,6 @@
     }
   },
   "required": [
-    "jwt_token",
     "task_id"
   ],
   "type": "object"
@@ -522,10 +525,10 @@
 `arguments` 传参举例（仅含必填字段）：
 
 ```json
-{
-  "jwt_token": "<jwt_token>"
-}
+{}
 ```
+
+可选字段：`jwt_token`。
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
@@ -534,14 +537,12 @@
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
     }
   },
-  "required": [
-    "jwt_token"
-  ],
   "type": "object"
 }
 ```
@@ -554,10 +555,11 @@
 
 ```json
 {
-  "jwt_token": "<jwt_token>",
   "task_id": "<task_id>"
 }
 ```
+
+可选字段：`jwt_token`。
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
 
@@ -566,6 +568,7 @@
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -577,7 +580,6 @@
     }
   },
   "required": [
-    "jwt_token",
     "task_id"
   ],
   "type": "object"

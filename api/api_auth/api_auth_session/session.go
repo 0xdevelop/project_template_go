@@ -413,6 +413,34 @@ type authenticatedIdentity struct {
 
 type authenticatedIdentityContextKey struct{}
 
+type bearerTokenContextKey struct{}
+
+// WithBearerToken 由协议 Adapter 调用：把 HTTP Authorization 头的值写入 context，
+// 供门禁在 arguments.jwt_token 缺席时取用。接受 "Bearer xxx" 或裸 token；空值不写入。
+func WithBearerToken(ctx context.Context, authorizationHeader string) context.Context {
+	token := strings.TrimSpace(authorizationHeader)
+	if len(token) >= 7 && strings.EqualFold(token[:7], "bearer ") {
+		token = strings.TrimSpace(token[7:])
+	}
+	if token == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, bearerTokenContextKey{}, token)
+}
+
+// requestCredential 取本次调用的门禁凭证：显式 arguments.jwt_token 优先，否则用 Adapter 写入的 Bearer 头。
+func requestCredential(ctx context.Context, params map[string]interface{}) string {
+	tokenValue, _ := params["jwt_token"].(string)
+	tokenValue = strings.TrimSpace(tokenValue)
+	if tokenValue == "" {
+		tokenValue, _ = ctx.Value(bearerTokenContextKey{}).(string)
+	}
+	if tokenValue == "" || len(tokenValue) > 8192 {
+		return ""
+	}
+	return tokenValue
+}
+
 // AuthenticateRequest 是 APIExecuter 统一准入门禁入口：按 auth_cfg.auth_type 分发鉴权类型
 // （当前仅 jwt：验证 arguments.jwt_token 并把身份写入 context；未来新类型在此 switch 扩分支）。
 // 非 Public 方法在门禁启用时 Execute 前必经此函数；失败统一返回业务错误，不区分 token 缺失与无效。
@@ -464,16 +492,15 @@ func InitializeBridge() error {
 }
 
 // authenticateRequestWithBridge 是 bridge 类型的门禁实现：
-// 验 arguments.jwt_token → 查本地吊销 → claims 身份下传 context。
+// 取凭证（arguments.jwt_token 或 Bearer 头）→ 验签 → 查本地吊销 → claims 身份下传 context。
 // jwt_token 由 APIExecuter 在返回后统一从 arguments 移除，业务层零感知。
 func authenticateRequestWithBridge(ctx context.Context, abilityParams interface{}) (context.Context, error) {
 	params, ok := abilityParams.(map[string]interface{})
 	if !ok {
 		return ctx, api_error_code.ErrInvalidArguments
 	}
-	tokenValue, _ := params["jwt_token"].(string)
-	tokenValue = strings.TrimSpace(tokenValue)
-	if tokenValue == "" || len(tokenValue) > 8192 {
+	tokenValue := requestCredential(ctx, params)
+	if tokenValue == "" {
 		return ctx, api_error_code.ErrPermissionDenied
 	}
 	if currentBridgeVerifier == nil {
@@ -502,15 +529,14 @@ func AuthenticatedBridgePrincipal(ctx context.Context) (*api_auth_bridge.Verifie
 	return claims, nil
 }
 
-// authenticateRequestWithJWT 是 jwt 类型的门禁实现：验 arguments.jwt_token、查 session 与用户、身份下传 context。
+// authenticateRequestWithJWT 是 jwt 类型的门禁实现：取凭证（arguments.jwt_token 或 Bearer 头）、查 session 与用户、身份下传 context。
 func authenticateRequestWithJWT(ctx context.Context, abilityParams interface{}) (context.Context, error) {
 	params, ok := abilityParams.(map[string]interface{})
 	if !ok {
 		return ctx, api_error_code.ErrInvalidArguments
 	}
-	tokenValue, _ := params["jwt_token"].(string)
-	tokenValue = strings.TrimSpace(tokenValue)
-	if tokenValue == "" || len(tokenValue) > 8192 {
+	tokenValue := requestCredential(ctx, params)
+	if tokenValue == "" {
 		return ctx, api_error_code.ErrPermissionDenied
 	}
 	user, session, err := authenticateAccessToken(ctx, tokenValue)

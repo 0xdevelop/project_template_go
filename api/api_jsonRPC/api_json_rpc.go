@@ -3,8 +3,9 @@ package api_jsonRPC
 import (
 	"context"
 	"errors"
-	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/0xdevelop/project_template_go/api/api_common"
@@ -23,6 +24,10 @@ func StartAPIServiceWithJsonRPC(apiCfgJsonRPC *api_config_jsonRPC.APIConfigJsonR
 		gtbox_log.LogErrorf("api port must be between 1 and 65535")
 		return
 	}
+	if apiCfgJsonRPC.BindAddress == "" {
+		gtbox_log.LogErrorf("api_cfg.api_cfg_jsonRPC.bind_address is required")
+		return
+	}
 
 	muxRouter := mux.NewRouter()
 	//muxRouter.Use(api_jsonRPC_handler.Middleware) // 使用中间件
@@ -32,14 +37,14 @@ func StartAPIServiceWithJsonRPC(apiCfgJsonRPC *api_config_jsonRPC.APIConfigJsonR
 	muxRouter.NotFoundHandler = http.HandlerFunc(api_common.HomeHandler)
 	muxRouter.MethodNotAllowedHandler = http.HandlerFunc(api_common.HomeHandler)
 
-	addr := fmt.Sprintf("%s:%d", "0.0.0.0", api_config_jsonRPC.CurrentAPICfgJsonRPC.Port)
+	addr := net.JoinHostPort(apiCfgJsonRPC.BindAddress, strconv.Itoa(apiCfgJsonRPC.Port))
 
 	httpServer = &http.Server{
 		Addr:    addr,
 		Handler: muxRouter,
 	}
 	go func() {
-		gtbox_log.LogInfof("API server Run On  [%s]", fmt.Sprintf("http://127.0.0.1:%d", api_config_jsonRPC.CurrentAPICfgJsonRPC.Port))
+		gtbox_log.LogInfof("API server Run On  [http://%s]", addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			gtbox_log.LogErrorf("Failed to start HTTP server: %v\n", err)
 		}

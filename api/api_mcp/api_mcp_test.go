@@ -75,6 +75,13 @@ func TestMCPUsesSupportedMethodsThroughLatestOfficialSDK(t *testing.T) {
 	}
 	for _, tool := range listResult.Tools {
 		delete(expectedTools, tool.Name)
+		// MCP 的门禁凭证走 HTTP Authorization 头，工具入参不暴露 jwt_token。
+		schema, _ := tool.InputSchema.(map[string]interface{})
+		if properties, ok := schema["properties"].(map[string]interface{}); ok {
+			if _, leaked := properties[api_supported_methods.GateTokenArgument]; leaked {
+				t.Fatalf("tool %s exposes %s in its MCP schema", tool.Name, api_supported_methods.GateTokenArgument)
+			}
+		}
 	}
 	if len(expectedTools) != 0 {
 		t.Fatalf("missing tools: %#v", expectedTools)

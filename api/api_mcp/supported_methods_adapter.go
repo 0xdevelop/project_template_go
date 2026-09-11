@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
 	"github.com/0xdevelop/project_template_go/config"
@@ -62,7 +63,7 @@ func newMCPServer() *mcp.Server {
 			&mcp.Tool{
 				Name:        method.Name,
 				Description: method.Description,
-				InputSchema: method.InputSchema,
+				InputSchema: method.InputSchemaWithoutGateToken(),
 			},
 			func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return executeSupportedMethod(ctx, request, method.Name)
@@ -85,6 +86,8 @@ func executeSupportedMethod(ctx context.Context, request *mcp.CallToolRequest, m
 	}
 
 	userAgent := mcpRequestUserAgent(request)
+	// 门禁凭证走标准 MCP HTTP 头：Authorization: Bearer <jwt>。
+	ctx = api_auth_session.WithBearerToken(ctx, mcpRequestHeader(request, "Authorization"))
 	callParams := map[string]interface{}{
 		"name":      methodName,
 		"arguments": arguments,
@@ -135,8 +138,12 @@ func explicitIsErrorMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
 }
 
 func mcpRequestUserAgent(request *mcp.CallToolRequest) string {
+	return mcpRequestHeader(request, "User-Agent")
+}
+
+func mcpRequestHeader(request *mcp.CallToolRequest, name string) string {
 	if request != nil && request.Extra != nil {
-		return request.Extra.Header.Get("User-Agent")
+		return request.Extra.Header.Get(name)
 	}
 	return ""
 }
