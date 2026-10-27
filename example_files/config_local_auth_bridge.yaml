@@ -1,0 +1,60 @@
+# auth_type=bridge 形态的本地配置样例。
+#
+# 与 config_local.yaml（auth_type=jwt）的唯一差别在 auth_cfg：
+#   jwt    —— 本服务自己签发令牌，既签又验，需要 session（签发密钥 / TTL）与
+#             email / verification（注册登录验证码链路）。
+#   bridge —— 令牌由外部 IdP 签发，本服务只用 IdP 公钥本地验签，不签发、不发验证码，
+#             因此 session / email / verification 三段全部不需要，改配 bridge 段。
+#
+# 密钥材料归属 auth_cfg，按 auth_type 决定需要哪些：bridge 只需公钥（验签），
+# jwt 形态才涉及签发密钥。不要把公钥挂到 backend 等「连哪个服务」的配置域下——
+# 那与连接目标无关，IdP 换实现时也不该跟着搬家。
+mysql_cfg: # Mysql configurations
+  dbname: "project_template_go"
+  dbuser: "project_template_go"
+  dbpwd: "project_template_go_pwd"
+  dbaddress: "127.0.0.1"
+  dbport: "3306"
+  dbtimezone: 0
+api_cfg: # API configurations
+  api_cfg_jsonRPC: # API configurations with JSON-RPC
+    enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
+    port: 13001
+    encryption_enabled: false
+  api_cfg_mcp: # API configurations with MCP
+    enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
+    port: 13002
+    mcp_transport_type: "streamable-http"
+  api_cfg_websocket: # API configurations with WebSocket
+    enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
+    port: 13004
+    allowed_origins:
+    - "127.0.0.1:*"
+    - "localhost:*"
+  api_cfg_grpc: # API configurations with gRPC
+    enabled: true
+    bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
+    port: 13005
+policy_cfg: # Policy scheduling configurations
+  policy_duration: "10s" # 定期轮询事项执行完一次到下一次的间隔，Go duration 字符串
+  workers_scaller: 5 # 最大异步并发 = CPU 数量 × 倍率
+auth_cfg: # Auth configurations
+  enabled: true # 统一准入门禁开关；缺省 true；false=门禁放行不提供身份，依赖身份的方法不可用
+  auth_type: "bridge" # 鉴权类型；bridge=令牌由外部 IdP 签发，本服务只验签
+  bridge: # bridge 形态配置（auth_type=bridge 时必填）
+    issuer: "idp" # IdP 标识（记录用途）
+    allowed_algs: ["ES256"] # 验签算法白名单；缺省 [ES256]；禁 none 与空串（fail-closed，防降级）
+    # IdP 公钥 PEM（PKIX，P-256）。bridge 形态必填，无缺省、不回落其它配置段——
+    # 缺失即启动期 fail-closed，全部受保护方法拒绝，不静默降级成无鉴权。
+    # 路径相对进程启动目录解析：debug 从仓根跑用 example_files/，release 部署目录用 conf/。
+    # 公钥由 IdP 侧提供，随部署物下发，不入仓。
+    public_key_path: "example_files/jwt_keys/idp-public.pem"
+    leeway_seconds: 60 # 时钟偏移容忍秒数；缺省 60
+    revocation_enabled: true # 本地登出吊销开关；缺省 true
+    # 吊销记录保留秒数，应 >= IdP access token 最长寿命；缺省 86400。
+    # IdP 的 logout 只吊销它那侧的 refresh token，access token 在过期前仍可验签通过，
+    # 因此登出即刻失效要靠本服务这份本地吊销记录拦。
+    revocation_max_ttl_seconds: 86400
