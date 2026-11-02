@@ -174,7 +174,7 @@ func AuthLogout(ctx context.Context, input interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func AuthJWTTokenRefresh(ctx context.Context, input interface{}) (interface{}, e
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func createSession(ctx context.Context, user *ability_user_model.User) (map[stri
 			time.Duration(config.RefreshTokenTTLSeconds) * time.Second,
 		),
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -565,7 +565,7 @@ func authenticateAccessToken(ctx context.Context, tokenValue string) (*ability_u
 	if err != nil {
 		return nil, nil, err
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

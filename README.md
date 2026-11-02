@@ -57,7 +57,7 @@ project_template_go
 │   └── api_error_code         通用业务错误码
 ├── ability                    父包带子包装配；默认注册 test 方法；ability_user 持 User model 与密码校验
 ├── policy                     统一调度域：CPU 倍率限流、持久化队列认领、临时 Worker 与重启续跑
-├── db                         GlobalMysqlCtl 唯一 MySQL 入口 + AutoMigrate 登记
+├── db                         唯一数据库入口：OpenStorage 换一行（2026-11-02 对齐 xjb_code）+ GormAutoMigrate 登记
 ├── config                     ProjectName/Version/BundleID + YAML/JSON/TOML 配置装配
 ├── common                     信号处理、panic 兜底
 ├── custom_cmd                 主程序子命令（version 等）

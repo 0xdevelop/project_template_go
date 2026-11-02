@@ -47,13 +47,15 @@
 - 邮件发送供应商由 Auth `email` 配置的 `provider` 字段选择，当前仅支持 `resend`（官方 Go SDK）；`api_key`、`from`、`product_name`、`verification_subject` 等均为强配置，缺失或非法在配置加载层显式拒绝并输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 键路径，敏感字段只报名不报值），不在业务代码里兜默认值。
 - 密码、验证码、session/token 等敏感值不得明文落库或写日志。唯一例外：Debug 运行模式下验证码明文可写 Debug 日志供本地联调，Release/Test 模式禁止。认证失败响应不得泄露邮箱或手机号是否存在。
 
-## MySQL 与 GORM
+## 数据库与 GORM
 
-- `db.GlobalMysqlCtl` 是项目唯一 MySQL 入口。它由 `main.go` 使用 `gtbox_orm_mysql.Instance()` 初始化，并在连接成功后才启动 API 服务。
-- 业务代码不得再次调用 `gtbox_orm_mysql.Instance()`、`gorm.Open` 或建立其他数据库连接池。
-- 所有查询和写入必须使用现有全局实例；需要 GORM 能力时使用 `db.GlobalMysqlCtl.MysqlDB.WithContext(ctx)`。
-- 多步写操作使用同一全局实例的 GORM `Transaction`。不得用多次无事务写入拼接一个原子业务动作。
-- 表结构以 Go model 为事实源，通过全局实例执行 GORM `AutoMigrate` 同步（登记于 `db.MysqlAutoMigrate`）。Model 使用 GORM tag 声明唯一索引、普通索引、NULL 和字段约束。
+使用模式与引擎无关。换 MySQL / SQLite 只改 `db.OpenStorage` 里生效的那一行（2026-11-02 用户定，对齐 xjb_code：「只是引擎内容变了而已」）。当前生效的是 MySQL，`gtbox_orm_mysql` 读 `mysql_cfg`，时区 `GTORMTimeZoneUTC`；SQLite 那一行注释掉，`gtbox_orm_sqlite` 打开 `./data/project_template_go.db`。
+
+- `db` 包是唯一数据库入口。`main.go` 调 `db.OpenStorage`，成功后再 `db.GormAutoMigrate`，两步都成功才启动 API 服务。业务经 `db.GormDB(ctx)` 取全局 GORM 实例。
+- 业务代码不得调用 `gtbox_orm_mysql`、`gtbox_orm_sqlite`、`gorm.Open`，也不得自建连接池。
+- 所有查询和写入使用 `db.GormDB(ctx)`。事务内只用事务句柄。
+- 多步写操作使用同一全局实例的 GORM `Transaction`。不得用多次无事务写入拼接一个原子业务动作。SQLite 连接池只有一个连接，事务内混用全局句柄会互相等待。
+- 表结构以 Go model 为事实源，通过全局实例执行 GORM `AutoMigrate` 同步（登记于 `db.GormAutoMigrate`）。Model 使用 GORM tag 声明唯一索引、普通索引、NULL 和字段约束。
 - 库表 model 统一嵌入 `gorm.Model`，其 `ID` 仅作行主键不出业务接口；业务标识用归属前缀明确命名（如 `UserID`、`SessionID`），确需 UUID 时直接调用 `uuid.NewString()`，不得增加只封装一行的 ID 生成函数。
 - 禁止通过 `mysql` CLI、手写 DDL、外部 shell 脚本或另一套迁移框架修改表结构；`AutoMigrate` 无法安全完成的破坏性变更必须先确认。
 - 数据库未初始化或连接不可用时必须返回明确错误，禁止 nil panic，也不得把未连接环境描述成真实数据库验证通过。

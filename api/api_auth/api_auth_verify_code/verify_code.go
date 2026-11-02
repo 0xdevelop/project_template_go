@@ -154,7 +154,7 @@ func sendVerificationCodeEmail(ctx context.Context, email string) (map[string]in
 	if err = deliverVerificationEmail(ctx, emailConfig, email, code, verificationConfig.CodeTTLSeconds); err != nil {
 		updateContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if db, dbErr := appdb.MysqlDB(updateContext); dbErr == nil {
+		if db, dbErr := appdb.GormDB(updateContext); dbErr == nil {
 			_ = db.Model(&authModel.AuthVerifyCode{}).
 				Where("id = ? AND code_hash = ? AND sent_at IS NULL", verificationCode.ID, verificationCode.CodeHash).
 				Update("code_hash", "").Error
@@ -165,7 +165,7 @@ func sendVerificationCodeEmail(ctx context.Context, email string) (map[string]in
 
 	updateContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	db, err := appdb.MysqlDB(updateContext)
+	db, err := appdb.GormDB(updateContext)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func deliverVerificationEmail(ctx context.Context, emailConfig *api_auth_config.
 // PurgeExpired 删除过期超 24 小时的验证码行（保留窗口供近期排障），作为 policy 定期轮询租户运行。
 // 表内行只增不减，此清理是唯一出口；使用 Unscoped 硬删，软删行同样无保留价值。
 func PurgeExpired(ctx context.Context) error {
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.
 	if err != nil {
 		return nil, "", err
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, "", err
 	}
@@ -316,7 +316,7 @@ func checkVerificationCode(ctx context.Context, recipient string, code string) (
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}

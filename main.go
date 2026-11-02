@@ -17,8 +17,6 @@ import (
 	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_cmd"
 	"github.com/george012/gtbox/gtbox_log"
-	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_config"
-	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_mysql"
 )
 
 var (
@@ -104,46 +102,39 @@ func main() {
 	config.SyncConfigFile(func(err error) {
 		gtbox_log.LogErrorf("[sync config eeror]:%v", err)
 	})
-	gtbox_log.LogInfof("开始链接数据库！")
-	db.GlobalMysqlCtl = gtbox_orm_mysql.Instance()
+	if err := db.OpenStorage(); err != nil {
+		gtbox_log.LogErrorf("storage open failed: %v", err)
+		return
+	}
+	if err := db.GormAutoMigrate(); err != nil {
+		gtbox_log.LogErrorf("gorm AutoMigrate failed: %v", err)
+		if closeErr := db.CloseStorage(); closeErr != nil {
+			gtbox_log.LogErrorf("storage close failed: %v", closeErr)
+		}
+		return
+	}
+	gtbox_log.LogInfof("storage migrated")
 
-	db.GlobalMysqlCtl.OPenMysql(
-		config.GlobalConfig.MysqlCfg.DBUser,
-		config.GlobalConfig.MysqlCfg.DBPwd,
-		config.GlobalConfig.MysqlCfg.DBName,
-		config.GlobalConfig.MysqlCfg.DBAddress,
-		config.GlobalConfig.MysqlCfg.DBPort,
-		gtbox_orm_config.GTORMTimeZoneUTC,
-		func(err error) {
-			if err != nil {
-				gtbox_log.LogErrorf("连接数据库异常！错误信息：%v", err.Error())
-				return
-			} else {
-				gtbox_log.LogInfof("连接数据库成功！")
+	// 启动维护调度域内部异步大循环
+	policy.PolicyServicesStart()
 
-				if migrateErr := db.MysqlAutoMigrate(); migrateErr != nil {
-					gtbox_log.LogErrorf("Mysql AutoMigrate failed: %v", migrateErr)
-					return
-				}
-				gtbox_log.LogInfof("Mysql AutoMigrate completed")
+	if err := config.GlobalConfig.ApiCfg.Validate(); err != nil {
+		gtbox_log.LogErrorf("api config invalid: %v; refusing to start", err)
+		if closeErr := db.CloseStorage(); closeErr != nil {
+			gtbox_log.LogErrorf("storage close failed: %v", closeErr)
+		}
+		return
+	}
+	api.StartAPIServices(config.GlobalConfig.ApiCfg)
 
-				// 启动维护调度域内部异步大循环
-				policy.PolicyServicesStart()
-
-				if err := config.GlobalConfig.ApiCfg.Validate(); err != nil {
-					gtbox_log.LogErrorf("api config invalid: %v; refusing to start", err)
-					return
-				}
-				api.StartAPIServices(config.GlobalConfig.ApiCfg)
-
-				if config.CurrentApp.CurrentRunMode != gtbox.RunModeRelease {
-					test_ui.LoadTestWeb()
-				}
-			}
-		},
-	)
+	if config.CurrentApp.CurrentRunMode != gtbox.RunModeRelease {
+		test_ui.LoadTestWeb()
+	}
 	common.LoadSigHandle(func() {
 		api.StopApiServices()
+		if err := db.CloseStorage(); err != nil {
+			gtbox_log.LogErrorf("storage close failed: %v", err)
+		}
 	}, nil)
 
 }

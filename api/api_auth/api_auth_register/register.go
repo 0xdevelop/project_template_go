@@ -69,7 +69,7 @@ func registerWithEmailCode(ctx context.Context, userName string, email string, p
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.MysqlDB(ctx)
+	db, err := appdb.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
