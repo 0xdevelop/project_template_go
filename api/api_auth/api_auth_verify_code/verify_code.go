@@ -19,7 +19,7 @@ import (
 	appdb "github.com/0xdevelop/project_template_go/db"
 	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_log"
-	"github.com/resend/resend-go/v3"
+	"github.com/resend/resend-go/v4"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
