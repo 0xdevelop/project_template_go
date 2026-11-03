@@ -22,8 +22,8 @@ type AsyncTask struct {
 	ProgressMessage string     `gorm:"size:512" json:"progress_message"`
 	ErrorCode       int        `gorm:"not null;default:0" json:"error_code"`
 	ErrorMessage    string     `gorm:"size:512" json:"error_message"`
-	InputPayload    string     `gorm:"type:mediumtext;comment:受理时的 arguments JSON，Worker 重放输入" json:"-"`
-	ResultPayload   string     `gorm:"type:mediumtext;comment:success 时的 Execute 返回值 JSON" json:"-"`
+	InputPayload    string     `gorm:"size:16777215;comment:受理时的 arguments JSON，Worker 重放输入" json:"-"`
+	ResultPayload   string     `gorm:"size:16777215;comment:success 时的 Execute 返回值 JSON" json:"-"`
 	StartedAt       *time.Time `gorm:"index" json:"started_at"`
 	CompletedAt     *time.Time `gorm:"index" json:"completed_at"`
 }

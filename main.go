@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -11,8 +12,9 @@ import (
 	"github.com/0xdevelop/project_template_go/common"
 	"github.com/0xdevelop/project_template_go/config"
 	"github.com/0xdevelop/project_template_go/custom_cmd"
-	"github.com/0xdevelop/project_template_go/db"
+	"github.com/0xdevelop/project_template_go/frontend"
 	"github.com/0xdevelop/project_template_go/policy"
+	"github.com/0xdevelop/project_template_go/storage"
 	"github.com/0xdevelop/project_template_go/test_ui"
 	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_cmd"
@@ -99,42 +101,54 @@ func main() {
 		config.CurrentApp.AppConfigFilePath = "./conf/config.yaml"
 	}
 
+	var configLoadErr error
 	config.SyncConfigFile(func(err error) {
-		gtbox_log.LogErrorf("[sync config eeror]:%v", err)
+		configLoadErr = err
+		gtbox_log.LogErrorf("config load failed: %v", err)
 	})
-	if err := db.OpenStorage(); err != nil {
+	if configLoadErr != nil {
+		return
+	}
+	if err := storage.OpenStorage(); err != nil {
 		gtbox_log.LogErrorf("storage open failed: %v", err)
 		return
 	}
-	if err := db.GormAutoMigrate(); err != nil {
-		gtbox_log.LogErrorf("gorm AutoMigrate failed: %v", err)
-		if closeErr := db.CloseStorage(); closeErr != nil {
-			gtbox_log.LogErrorf("storage close failed: %v", closeErr)
+	defer func() {
+		if err := storage.CloseStorage(); err != nil {
+			gtbox_log.LogErrorf("storage close failed: %v", err)
 		}
+	}()
+	if err := storage.GormAutoMigrate(); err != nil {
+		gtbox_log.LogErrorf("gorm AutoMigrate failed: %v", err)
 		return
 	}
 	gtbox_log.LogInfof("storage migrated")
 
-	// 启动维护调度域内部异步大循环
-	policy.PolicyServicesStart()
-
 	if err := config.GlobalConfig.ApiCfg.Validate(); err != nil {
 		gtbox_log.LogErrorf("api config invalid: %v; refusing to start", err)
-		if closeErr := db.CloseStorage(); closeErr != nil {
-			gtbox_log.LogErrorf("storage close failed: %v", closeErr)
-		}
 		return
 	}
 	api.StartAPIServices(config.GlobalConfig.ApiCfg)
-
+	stopPolicy := policy.PolicyServicesStart()
+	defer stopPolicy()
+	defer api.StopApiServices()
 	if config.CurrentApp.CurrentRunMode != gtbox.RunModeRelease {
 		test_ui.LoadTestWeb()
 	}
-	common.LoadSigHandle(func() {
-		api.StopApiServices()
-		if err := db.CloseStorage(); err != nil {
-			gtbox_log.LogErrorf("storage close failed: %v", err)
-		}
-	}, nil)
+	frontendServer, err := frontend.FrontendServicesStart(config.GlobalConfig.FrontendCfg)
+	if err != nil {
+		gtbox_log.LogErrorf("frontend start failed: %v", err)
+		return
+	}
+	if frontendServer != nil {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := frontendServer.Shutdown(ctx); err != nil {
+				gtbox_log.LogErrorf("frontend shutdown failed: %v", err)
+			}
+		}()
+	}
+	common.LoadSigHandle(nil, nil)
 
 }

@@ -57,11 +57,12 @@ project_template_go
 │   └── api_error_code         通用业务错误码
 ├── ability                    父包带子包装配；默认注册 test 方法；ability_user 持 User model 与密码校验
 ├── policy                     统一调度域：CPU 倍率限流、持久化队列认领、临时 Worker 与重启续跑
-├── db                         唯一数据库入口：OpenStorage 换一行（2026-11-02 对齐 xjb_code）+ GormAutoMigrate 登记
+├── storage                    程序固定存储入口：多引擎与唯一主库（见 docs/storage.md）
 ├── config                     ProjectName/Version/BundleID + YAML/JSON/TOML 配置装配
 ├── common                     信号处理、panic 兜底
 ├── custom_cmd                 主程序子命令（version 等）
 ├── test_ui                    开发测试台（13003）：四协议调试 + /docs_api 文档页
+├── frontend                   TS/Bun 前端壳子与静态页面服务（见 docs/frontend.md）
 └── docs                       API、Task 异步队列与 Policy 调度契约 + api_methods.md（生成）
 ```
 
@@ -77,4 +78,6 @@ project_template_go
 
 ### 默认端口
 
-JSON-RPC `13001`、MCP `13002`、test_ui `13003`、WebSocket `13004`、gRPC `13005`。
+JSON-RPC `13001`、MCP `13002`、test_ui `13003`（`test_ui_cfg`，`127.0.0.1` 仅本机，`0.0.0.0` 对外）、WebSocket `13004`、gRPC `13005`。
+
+前端壳子、构建入口与 `frontend_cfg` 配置见 [`docs/frontend.md`](docs/frontend.md)。

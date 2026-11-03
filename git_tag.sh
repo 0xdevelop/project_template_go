@@ -111,7 +111,6 @@ function find_prev_release_commit() {
 }
 
 function gen_changelog_if_possible() {
-    local del_version_no="$1"
     local out_dir out_file prev_release_sha range_end range
     out_dir="changelog"
     mkdir -p "${out_dir}"
@@ -174,18 +173,6 @@ function gen_changelog_if_possible() {
     } > "${out_file}"
 
     echo "[changelog] wrote ${out_file}"
-
-    if [ -n "${del_version_no}" ]; then
-        local pre_file="${out_dir}/v${del_version_no}.md"
-        if [ -f "${pre_file}" ]; then
-            if git ls-files --error-unmatch "${pre_file}" >/dev/null 2>&1; then
-                git rm -f "${pre_file}"
-            else
-                rm -f "${pre_file}" 2>/dev/null || true
-            fi
-            echo "[changelog] removed ${pre_file}"
-        fi
-    fi
 }
 
 function gen_api_docs() {
@@ -198,13 +185,13 @@ function git_handle_push() {
     local pre_del_version_no=$(get_pre_del_version_no "$current_version_no")
     echo "Pre Del Version With v"${pre_del_version_no}
 
-    gen_changelog_if_possible "${pre_del_version_no}" \
+    gen_changelog_if_possible \
     && gen_api_docs \
-    && rm -rf changelog/v${pre_del_version_no}.md \
-    && git add . \
+    && git add -- "${VersionFile}" docs/api_methods.md "changelog/${NEXT_VERSION}.md" \
     && git commit -m "Release:--: v${next_version_no}_$(date -u +"%Y-%m-%d_%H:%M:%S")"_"UTC" \
     && git tag v${next_version_no} \
-    && git tag -f latest v${next_version_no}
+    && git tag -f latest v${next_version_no} \
+    || return
 
     for remote in $(git remote)
     do
@@ -212,7 +199,8 @@ function git_handle_push() {
         git push --delete ${remote} latest \
         && git push ${remote} \
         && git push ${remote} latest \
-        && git push ${remote} v${next_version_no}
+        && git push ${remote} v${next_version_no} \
+        || return
     done
     git tag -d v${pre_del_version_no}
 }

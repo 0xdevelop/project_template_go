@@ -116,6 +116,7 @@ stateDiagram-v2
 - **认领**：事务内 `SELECT ... WHERE run_status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED` → 置 `running` → 提交后才执行。多 Worker 零踩踏，同一任务不可能被认领两次。
 - **Worker 并发**：由 Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 计算全局上限；每个 Worker 只认领并执行一条任务，完成后 goroutine 自然释放。
 - **排队区**：受理层不设人为的每用户在途数量上限；MySQL 任务记录承载排队，资源故障按正常数据库错误返回。
+- **选库与退出**：Task 全流程使用 `storage.MysqlDB(ctx)`，不随主库切换；未启用 MySQL 时受理明确报错，Policy 不派发 Task。退出时停止新的派发，等待已认领任务和维护事项结束，再关闭程序固定存储。
 - 普通状态查询读已提交快照不加锁；并发状态变更一律条件原子更新或行锁事务。共享瓶颈是全局 DB 连接池（Worker 与请求线程共用），池容量属部署参数。
 - **任务身份快照**：Worker 把 `AsyncTaskInfo{TaskID, UserID}` 注入 context，业务 `Execute` 经 `AsyncTaskInfoFromContext` 读取——与门禁在线身份语义分离，异步执行不要求受理时的 session 仍存活。
 - **执行单元**：Policy 每轮只填充当前空闲名额，长任务持续占用其名额，下一轮不会重复扩容。

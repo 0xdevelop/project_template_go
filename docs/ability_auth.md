@@ -162,7 +162,8 @@ flowchart LR
 - 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权——入口按 `auth_cfg.auth_type` 分发类型（缺省与当前唯一支持值均为 `jwt`；非法值 fail-closed 拒绝全部受保护方法），凭证取值顺序：显式 `arguments.jwt_token` 优先，否则用协议 Adapter 经 `WithBearerToken` 写入 context 的 `Authorization: Bearer` 头值；无论开关状态 `jwt_token` 均从 arguments 移除，身份经 context 下传；`jwt_token` 入参 schema 由方法注册表按非 Public 恒定注入为**可选项**（不随开关变化），业务注册禁止声明，MCP 对外 schema 不含它。
 - 门禁开关 `auth_cfg.enabled`：缺省启用（段/键缺席均按启用处理，fail-closed 取向）；显式 `enabled: false` 时门禁放行且**不提供身份**——依赖 `AuthenticatedUser(ctx)` 的方法照常返回权限错误（不造匿名/系统假身份），适用无用户体系的部署形态。
 - Auth 配置校验纪律同样覆盖 `auth_cfg.auth_type`（仅认 `jwt`，非法值 warning + 全部受保护方法拒绝）。
-- `db` 包是唯一数据库入口（2026-11-02 用户定，对齐 xjb_code：「只是引擎内容变了而已」；引擎在 `OpenStorage` 换一行，当前生效 MySQL）。查询和写入使用 `GormDB(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `GormAutoMigrate` 同步，不得经另一连接池、原始 DDL、数据库 CLI 或外部脚本修改。
+- `storage` 包是唯一存储入口。查询和写入使用 `GormDB(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `GormAutoMigrate` 同步，不得经另一连接池、原始 DDL、数据库 CLI 或外部脚本修改。
+- 多关系库并存时，Auth/User 经 `GormDB(ctx)` 使用 `storage_cfg.primary` 指定的主库；程序固定存储与 Ability 独立实例的边界见 [存储说明](storage.md)。
 - 邮件通道供应商由 auth 配置 `email.provider` 选择，当前仅支持 `resend`（Resend 官方 Go SDK）；配置进入 `config.FileConfig` 的 YAML/JSON/TOML 体系。
 - `email` 配置块的 `provider`、`api_key`、`from`、`product_name`（邮件文案品牌名）、`verification_subject` 均为强配置：缺失或非法在配置加载层显式拒绝，不在业务代码里兜默认值。
 - Auth 配置校验失败输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 完整键路径，敏感字段只报名不报值）。

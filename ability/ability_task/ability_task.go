@@ -15,7 +15,7 @@ import (
 	"github.com/0xdevelop/project_template_go/api/api_error_code"
 	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
 	"github.com/0xdevelop/project_template_go/common"
-	appdb "github.com/0xdevelop/project_template_go/db"
+	"github.com/0xdevelop/project_template_go/storage"
 	"github.com/george012/gtbox/gtbox_log"
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
@@ -122,7 +122,7 @@ func AcceptAsyncTask(ctx context.Context, methodName string, abilityParams inter
 	if user, _, identityErr := api_auth_session.AuthenticatedUser(ctx); identityErr == nil {
 		userID = &user.UserID
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func ExecuteNextQueuedTask(ctx context.Context) (bool, error) {
 
 // claimQueuedTask 用 FOR UPDATE SKIP LOCKED 认领一条排队任务（高并发多 worker 零踩踏），无任务返回 nil。
 func claimQueuedTask(ctx context.Context) (*ability_task_model.AsyncTask, error) {
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func callExecuteRecovered(
 
 // finishTask 把任务落到唯一终态 done + 对应业务结局；running 行由当前 worker 独占，直接条件更新。
 func finishTask(ctx context.Context, taskID string, processStatus string, resultPayload string, errorCode int, errorMessage string) {
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		gtbox_log.LogErrorf("async task finish failed: task_id=%s: %v", taskID, err)
 		return
@@ -296,7 +296,7 @@ func finishTask(ctx context.Context, taskID string, processStatus string, result
 // 运行中意外产生的孤儿同样每轮自愈。重跑兜底依赖异步 Execute 幂等（契约明记，责任归业务函数）。
 // 由 policy 周期维护大循环调用。
 func RequeueOrphanedTasks(ctx context.Context) error {
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func UpdateProgress(ctx context.Context, taskID string, progress float64, messag
 	if taskID == "" || progress < 0 || progress > 100 {
 		return errors.New("invalid task progress")
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return err
 	}
@@ -356,7 +356,7 @@ func TaskGet(ctx context.Context, input interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func TaskList(ctx context.Context, input interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +414,7 @@ func TaskCancel(ctx context.Context, input interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.MysqlDB(ctx)
 	if err != nil {
 		return nil, err
 	}

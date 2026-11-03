@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,6 @@ import (
 )
 
 const (
-	defaultTestUIPort  = 13003
 	maxProxyBodySize   = 4 << 20
 	maxProxyResultSize = 8 << 20
 
@@ -108,16 +108,25 @@ type proxyResponse struct {
 	ProtocolError bool                `json:"protocolError,omitempty"`
 }
 
-// LoadTestWeb builds and starts the local API test console.
+// LoadTestWeb 启动开发测试台。test_ui_cfg.enabled 为 false 时不启动。
 func LoadTestWeb() {
 	loadTestWebOnce.Do(func() {
+		if config.GlobalConfig == nil || config.GlobalConfig.TestUICfg == nil || !config.GlobalConfig.TestUICfg.Enabled {
+			return
+		}
+		uiCfg := config.GlobalConfig.TestUICfg
+		if strings.TrimSpace(uiCfg.BindAddress) == "" || uiCfg.Port < 1 || uiCfg.Port > 65535 {
+			gtbox_log.LogErrorf("Failed to start test UI: test_ui_cfg.bind_address and port are required")
+			return
+		}
+
 		webFS, err := loadWebFS()
 		if err != nil {
 			gtbox_log.LogErrorf("Failed to load test UI: %v", err)
 			return
 		}
 
-		listener, err := listen()
+		listener, err := listen(uiCfg.BindAddress, uiCfg.Port)
 		if err != nil {
 			gtbox_log.LogErrorf("Failed to start test UI: %v", err)
 			return
@@ -207,29 +216,8 @@ func loadWebFS() (fs.FS, error) {
 	return fs.Sub(embeddedWeb, "web/dist")
 }
 
-func listen() (net.Listener, error) {
-	port := defaultTestUIPort
-	if api_config.CurrentApiCfg != nil {
-		if api_config.CurrentApiCfg.APICfgJsonRPC != nil &&
-			api_config.CurrentApiCfg.APICfgJsonRPC.Port >= port {
-			port = api_config.CurrentApiCfg.APICfgJsonRPC.Port + 1
-		}
-		if api_config.CurrentApiCfg.APICfgMCP != nil &&
-			api_config.CurrentApiCfg.APICfgMCP.Port >= port {
-			port = api_config.CurrentApiCfg.APICfgMCP.Port + 1
-		}
-	}
-	if port < 1 || port > 65535 {
-		port = defaultTestUIPort
-	}
-
-	for currentPort := port; currentPort <= 65535; currentPort++ {
-		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", currentPort))
-		if err == nil {
-			return listener, nil
-		}
-	}
-	return nil, fmt.Errorf("no available port from %d to 65535", port)
+func listen(bindAddress string, port int) (net.Listener, error) {
+	return net.Listen("tcp", net.JoinHostPort(bindAddress, strconv.Itoa(port)))
 }
 
 const apiDocSourcePlaceholder = "{{API_DOC_SOURCES}}"

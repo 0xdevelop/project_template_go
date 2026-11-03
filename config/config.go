@@ -3,21 +3,22 @@ package config
 import (
 	"errors"
 	"fmt"
-	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_config"
-	"github.com/0xdevelop/project_template_go/policy/policy_config"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_config"
+	"github.com/0xdevelop/project_template_go/frontend/frontend_config"
+	"github.com/0xdevelop/project_template_go/policy/policy_config"
 
 	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/0xdevelop/project_template_go/api/api_grpc/api_config_grpc"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
 	"github.com/0xdevelop/project_template_go/api/api_mcp/api_config_mcp"
 	"github.com/0xdevelop/project_template_go/api/api_websocket/api_config_websocket"
-	"github.com/0xdevelop/project_template_go/db/db_config"
+	"github.com/0xdevelop/project_template_go/storage/storage_config"
 	"github.com/george012/gtbox/gtbox_log"
-	"github.com/george012/gtbox/gtbox_orm/gtbox_orm_config"
 	"github.com/goccy/go-json"
 	"github.com/goccy/go-yaml"
 	"github.com/pelletier/go-toml/v2"
@@ -27,7 +28,7 @@ const (
 	ProjectName     = "project_template_go"
 	ProjectVersion  = "v0.0.13"
 	ProjectBundleID = "com.project_template_go.project_template_go"
-	apiPortDefault  = 12095
+	apiPortDefault  = 7095
 )
 
 var (
@@ -35,11 +36,20 @@ var (
 	HardSN       string
 )
 
+type TestUIConfig struct {
+	Enabled     bool   `yaml:"enabled" json:"enabled" toml:"enabled"`
+	BindAddress string `yaml:"bind_address" json:"bind_address" toml:"bind_address" comment:"监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外"`
+	Port        int    `yaml:"port" json:"port" toml:"port"`
+}
+
 type FileConfig struct {
-	MysqlCfg  *db_config.MysqlConfig      `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg" comment:"Mysql configurations"`
-	ApiCfg    *api_config.ApiConfig       `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
-	AuthCfg   *api_auth_config.AuthConfig `yaml:"auth_cfg" json:"auth_cfg" toml:"auth_cfg" comment:"Auth configurations"`
-	PolicyCfg *policy_config.PolicyConfig `yaml:"policy_cfg" json:"policy_cfg" toml:"policy_cfg" comment:"Policy scheduling configurations"`
+	StorageCfg  *storage_config.StorageConfig     `yaml:"storage_cfg" json:"storage_cfg" toml:"storage_cfg" comment:"存储"`
+	LegacyMysql *storage_config.LegacyMysqlConfig `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg"`
+	ApiCfg      *api_config.ApiConfig             `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
+	FrontendCfg *frontend_config.FrontendConfig   `yaml:"frontend_cfg" json:"frontend_cfg" toml:"frontend_cfg" comment:"前端页面服务配置"`
+	TestUICfg   *TestUIConfig                     `yaml:"test_ui_cfg" json:"test_ui_cfg" toml:"test_ui_cfg" comment:"开发测试台"`
+	AuthCfg     *api_auth_config.AuthConfig       `yaml:"auth_cfg" json:"auth_cfg" toml:"auth_cfg" comment:"Auth configurations"`
+	PolicyCfg   *policy_config.PolicyConfig       `yaml:"policy_cfg" json:"policy_cfg" toml:"policy_cfg" comment:"Policy scheduling configurations"`
 }
 
 func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
@@ -116,10 +126,9 @@ func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
 		switch field.Type.Kind() {
 		case reflect.Ptr:
 			if fieldVal.IsNil() {
-				nested = reflect.New(field.Type.Elem()).Interface()
-			} else {
-				nested = fieldVal.Interface()
+				continue
 			}
+			nested = fieldVal.Interface()
 		case reflect.Struct:
 			nested = fieldVal.Interface()
 		case reflect.Slice:
@@ -180,6 +189,13 @@ func LoadConfig(file string) error {
 	if decodeErr != nil {
 		return decodeErr
 	}
+	GlobalConfig.StorageCfg, err = storage_config.Apply(GlobalConfig.StorageCfg, GlobalConfig.LegacyMysql)
+	if err != nil {
+		return err
+	}
+	if err := GlobalConfig.FrontendCfg.Validate(); err != nil {
+		return err
+	}
 	api_auth_config.CurrentCfgAuth = GlobalConfig.AuthCfg
 	policy_config.CurrentCfgPolicy = GlobalConfig.PolicyCfg
 	return nil
@@ -213,6 +229,9 @@ func SaveConfig(file string, content *FileConfig) error {
 		}
 	}
 
+	if err != nil {
+		return fmt.Errorf("无法编码配置文件 [%s]: %w", file, err)
+	}
 	err = os.WriteFile(file, buf, 0755)
 	if err != nil {
 		return errors.New(fmt.Sprintf("无法写入配置文件 [%s]: %s", file, err.Error()))
@@ -227,14 +246,7 @@ func generateDefaultConfig() *FileConfig {
 	// 生成的缺省配置只监听本机；对外部署由运维改成 0.0.0.0，不在代码里兜底。
 	bindLocal := "127.0.0.1"
 	fileCfg := &FileConfig{
-		MysqlCfg: &db_config.MysqlConfig{
-			DBName:     "test_db",
-			DBUser:     "test_db_user",
-			DBPwd:      "test_db_pwd",
-			DBAddress:  "127.0.0.1",
-			DBPort:     3306,
-			DBTimeZone: gtbox_orm_config.GTORMTimeZoneUTC.String(),
-		},
+		StorageCfg: storage_config.Default("./data/project_template_go.db"),
 		ApiCfg: &api_config.ApiConfig{
 			APICfgJsonRPC: &api_config_jsonRPC.APIConfigJsonRPC{
 				Enabled:           true,
@@ -262,6 +274,16 @@ func generateDefaultConfig() *FileConfig {
 				BindAddress: bindLocal,
 				Port:        aport + 4,
 			},
+		},
+		FrontendCfg: &frontend_config.FrontendConfig{
+			Enabled:     true,
+			BindAddress: bindLocal,
+			Port:        aport + 5,
+		},
+		TestUICfg: &TestUIConfig{
+			Enabled:     true,
+			BindAddress: bindLocal,
+			Port:        aport + 2,
 		},
 		PolicyCfg: &policy_config.PolicyConfig{
 			PolicyDuration: "10s",

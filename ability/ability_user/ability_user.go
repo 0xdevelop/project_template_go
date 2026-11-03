@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/0xdevelop/project_template_go/ability/ability_user/ability_user_model"
-	appdb "github.com/0xdevelop/project_template_go/db"
+	"github.com/0xdevelop/project_template_go/storage"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -62,7 +62,7 @@ func NicknameChangeByUserID(ctx context.Context, userID string, rawNickName stri
 	if userID == "" || nickName == "" || len(nickName) > 32 {
 		return nil, ErrInvalidNickName
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func NicknameChangeByUserID(ctx context.Context, userID string, rawNickName stri
 }
 
 func AuthenticateEmail(ctx context.Context, email string, password string) (*ability_user_model.User, error) {
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func AuthenticateEmail(ctx context.Context, email string, password string) (*abi
 }
 
 func AuthenticatePhone(ctx context.Context, phone string, password string) (*ability_user_model.User, error) {
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}

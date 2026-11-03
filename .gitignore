@@ -23,5 +23,8 @@ tmp/
 test_ui/web/node_modules/
 # dist 不进仓：build.sh 无条件跑 gen_test_ui.sh 现场构建，CI 装 bun；Debug 启动时 LoadTestWeb 也现场构建
 test_ui/web/dist/
+frontend/dist/
+frontend/node_modules/
 .playwright-mcp/
+.auto_coding/
 

@@ -12,7 +12,7 @@ import (
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_model"
 	"github.com/0xdevelop/project_template_go/api/api_error_code"
 	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
-	appdb "github.com/0xdevelop/project_template_go/db"
+	"github.com/0xdevelop/project_template_go/storage"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -69,7 +69,7 @@ func registerWithEmailCode(ctx context.Context, userName string, email string, p
 	if err != nil {
 		return nil, err
 	}
-	db, err := appdb.GormDB(ctx)
+	db, err := storage.GormDB(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func registerWithEmailCode(ctx context.Context, userName string, email string, p
 			now,
 		)
 		if createErr != nil {
-			if !appdb.IsDuplicateKeyError(createErr) {
+			if !storage.IsDuplicateKeyError(createErr) {
 				return createErr
 			}
 			outcomeErr = api_error_code.ErrInvalidArguments

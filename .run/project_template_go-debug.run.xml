@@ -14,6 +14,17 @@
           <script value="build" />
         </scripts>
         <node-interpreter value="project" />
+        <package-manager value="bun" />
+        <envs />
+      </option>
+      <option name="NpmBeforeRunTask" enabled="true">
+        <package-json value="$PROJECT_DIR$/frontend/package.json" />
+        <command value="run" />
+        <scripts>
+          <script value="build" />
+        </scripts>
+        <node-interpreter value="project" />
+        <package-manager value="bun" />
         <envs />
       </option>
     </method>
