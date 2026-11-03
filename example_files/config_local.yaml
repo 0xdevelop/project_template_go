@@ -1,32 +1,58 @@
-mysql_cfg: # Mysql configurations
-  dbname: "project_template_go"
-  dbuser: "project_template_go"
-  dbpwd: "project_template_go_pwd"
-  dbaddress: "127.0.0.1"
-  dbport: "3306"
-  dbtimezone: 0
+storage_cfg: # 存储。enabled 为 true 的引擎会打开，可以同时开多个
+  storage_sqlite:
+    enabled: true
+    path: "./data/project_template_go.db"
+  storage_mysql:
+    enabled: false
+    dbname: "project_template_go"
+    dbuser: "project_template_go"
+    dbpwd: "project_template_go_pwd"
+    dbaddress: "127.0.0.1"
+    dbport: 3306
+  storage_postgresql:
+    enabled: false
+    dbname: "project_template_go"
+    dbuser: "project_template_go"
+    dbpwd: "project_template_go_pwd"
+    dbaddress: "127.0.0.1"
+    dbport: 5432
+    sslmode: "disable"
+  storage_redis:
+    enabled: false
+    addr: "127.0.0.1:6379"
+    password: ""
+    db_index: 0
+    database: false
 api_cfg: # API configurations
   api_cfg_jsonRPC: # API configurations with JSON-RPC
     enabled: true
     bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
-    port: 13001
+    port: 7095
     encryption_enabled: false
   api_cfg_mcp: # API configurations with MCP
     enabled: true
     bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
-    port: 13002
+    port: 7096
     mcp_transport_type: "streamable-http"
   api_cfg_websocket: # API configurations with WebSocket
     enabled: true
     bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
-    port: 13004
+    port: 7097
     allowed_origins:
     - "127.0.0.1:*"
     - "localhost:*"
   api_cfg_grpc: # API configurations with gRPC
     enabled: true
     bind_address: "0.0.0.0" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
-    port: 13005
+    port: 7098
+test_ui_cfg: # 开发测试台
+  enabled: true
+  bind_address: "127.0.0.1" # 监听地址（必填）：127.0.0.1 仅本机；0.0.0.0 对外
+  port: 7099
+frontend_cfg: # 前端页面服务配置
+  enabled: true
+  bind_address: "127.0.0.1"
+  port: 13006
 policy_cfg: # Policy scheduling configurations
   policy_duration: "10s" # 定期轮询事项执行完一次到下一次的间隔，Go duration 字符串
   workers_scaller: 5 # 最大异步并发 = CPU 数量 × 倍率
