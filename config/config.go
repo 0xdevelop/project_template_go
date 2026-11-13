@@ -26,7 +26,7 @@ import (
 
 const (
 	ProjectName     = "project_template_go"
-	ProjectVersion  = "v0.0.15"
+	ProjectVersion  = "v0.0.16"
 	ProjectBundleID = "com.project_template_go.project_template_go"
 	apiPortDefault  = 7095
 )
