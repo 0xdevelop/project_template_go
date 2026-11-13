@@ -73,7 +73,7 @@ func LoadAPIMethods() {
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodJWTTokenCheck,
-		Description: "检查 JWT token 并返回当前身份",
+		Description: "按凭证种类分别检查当前自签 JWT 或 API key，返回用户身份与凭证来源；api_key_id 只是 key 行句柄",
 		InputSchema: api_auth_common.InputSchema(map[string]interface{}{}),
 		Execute:     AuthJWTTokenCheck,
 	})
@@ -468,7 +468,8 @@ func requestCredential(ctx context.Context, params map[string]interface{}) strin
 	return tokenValue
 }
 
-// AuthCaller 是业务层看到的调用方身份。APIKeyID 只在凭证是 API key 时有值。
+// AuthCaller 带出本次调用的用户与凭证来源。身份是 UserID。
+// APIKeyID 是 key 行句柄，只在来源为 api_key 时有值，不是调用方身份。
 type AuthCaller struct {
 	UserID     string
 	AuthSource string
@@ -484,7 +485,8 @@ func identityFromContext(ctx context.Context) (*authenticatedIdentity, error) {
 	return identity, nil
 }
 
-// callerFromIdentity 从同一份身份派生调用方。有 API key 时来源是 api_key，否则是 session。
+// callerFromIdentity 从已通过校验的身份取出 UserID 与凭证来源。
+// 来源为 api_key 时附带 key 行句柄，该句柄不是身份。
 func callerFromIdentity(identity *authenticatedIdentity) *AuthCaller {
 	caller := &AuthCaller{UserID: identity.user.UserID}
 	if identity.apiKey != nil {
@@ -496,7 +498,7 @@ func callerFromIdentity(identity *authenticatedIdentity) *AuthCaller {
 	return caller
 }
 
-// AuthenticatedCaller 读取门禁下传的调用方身份；非 Public 方法执行时必有。
+// AuthenticatedCaller 读取本地账户门禁写入的用户与凭证来源；缺少身份时返回权限错误。
 func AuthenticatedCaller(ctx context.Context) (*AuthCaller, error) {
 	identity, err := identityFromContext(ctx)
 	if err != nil {
@@ -505,8 +507,9 @@ func AuthenticatedCaller(ctx context.Context) (*AuthCaller, error) {
 	return callerFromIdentity(identity), nil
 }
 
-// AuthenticateRequest 是 APIExecuter 统一准入门禁入口：按 auth_cfg.auth_type 分发鉴权类型
-// （jwt：按前缀分流 API key 与自签 JWT；bridge：验外部令牌）。
+// AuthenticateRequest 是 APIExecuter 统一准入门禁入口：按 auth_cfg.auth_type 分发。
+// jwt 按前缀把凭证交给各自的校验（key_ 走 API key，其余走自签 JWT），通过后才共路加载用户。
+// bridge 只验外部 IdP 令牌，不接受 key_，身份是 claims。
 // 非 Public 方法在门禁启用时 Execute 前必经此函数；失败统一返回业务错误，不区分 token 缺失与无效。
 // 验证通过后 jwt_token 由 APIExecuter 从 arguments 移除，业务层零感知。
 func AuthenticateRequest(ctx context.Context, abilityParams interface{}) (context.Context, error) {
@@ -517,7 +520,7 @@ func AuthenticateRequest(ctx context.Context, abilityParams interface{}) (contex
 	}
 	switch authType {
 	case api_auth_config.AuthTypeJWT:
-		return authenticateRequestWithJWT(ctx, abilityParams)
+		return authAuthenticateUserRequest(ctx, abilityParams)
 	case api_auth_config.AuthTypeBridge:
 		return authenticateRequestWithBridge(ctx, abilityParams)
 	default:
@@ -529,6 +532,7 @@ func AuthenticateRequest(ctx context.Context, abilityParams interface{}) (contex
 //
 // 令牌由外部 IdP 签发，本服务用 IdP 公钥本地验签 + 查本地吊销状态；
 // 无 session 库表、无 DB 用户行——身份即验签出的 claims。
+// 不接受本地 api_key，也没有外部系统的 api key 在本地当凭证的入口。
 // 业务方法在 bridge 形态下用 AuthenticatedBridgePrincipal(ctx) 读身份
 // （jwt 形态用 AuthenticatedUser，两者身份形状不同：DB 用户行 vs 令牌 claims）。
 
@@ -593,15 +597,16 @@ func AuthenticatedBridgePrincipal(ctx context.Context) (*api_auth_bridge.Verifie
 	return claims, nil
 }
 
-// jwtCredential 是凭证验完、查用户之前的结果。Session 与 APIKey 只有一个非空。
-type jwtCredential struct {
+// authCredential 是验证后的本地用户凭证；session 与 apiKey 只有一个非空。
+type authCredential struct {
 	userID  string
 	session *authModel.AuthSession
 	apiKey  *authModel.AuthAPIKey
 }
 
-// authenticateRequestWithJWT 是 jwt 类型的门禁实现：取凭证，按前缀解出用户标识和 session 或 API key，再由同一处查用户并写入身份。
-func authenticateRequestWithJWT(ctx context.Context, abilityParams interface{}) (context.Context, error) {
+// authAuthenticateUserRequest 按前缀分开校验：key_ 走 API key，其余走自签 JWT。
+// 各自通过后才调用 authLoadUserIdentity，加载同一个 DB 用户。
+func authAuthenticateUserRequest(ctx context.Context, abilityParams interface{}) (context.Context, error) {
 	params, ok := abilityParams.(map[string]interface{})
 	if !ok {
 		return ctx, api_error_code.ErrInvalidArguments
@@ -610,21 +615,21 @@ func authenticateRequestWithJWT(ctx context.Context, abilityParams interface{}) 
 	if tokenValue == "" {
 		return ctx, api_error_code.ErrPermissionDenied
 	}
-	var credential *jwtCredential
+	var credential *authCredential
 	var err error
 	if strings.HasPrefix(tokenValue, APIKeyPrefix) {
-		credential, err = resolveAPIKey(ctx, tokenValue)
+		credential, err = authVerifyAPIKey(ctx, tokenValue)
 	} else {
-		credential, err = resolveAccessToken(ctx, tokenValue)
+		credential, err = authVerifyAccessToken(ctx, tokenValue)
 	}
 	if err != nil {
 		return ctx, err
 	}
-	return admitJWTCredential(ctx, credential)
+	return authLoadUserIdentity(ctx, credential)
 }
 
-// resolveAPIKey 按 sha256 查未吊销的 API key，返回用户标识与 key 记录。不查用户。
-func resolveAPIKey(ctx context.Context, keyValue string) (*jwtCredential, error) {
+// authVerifyAPIKey 按 sha256 验证未吊销的 API key，返回用户标识与 key 记录。
+func authVerifyAPIKey(ctx context.Context, keyValue string) (*authCredential, error) {
 	db, err := storage.GormDB(ctx)
 	if err != nil {
 		return nil, err
@@ -640,11 +645,11 @@ func resolveAPIKey(ctx context.Context, keyValue string) (*jwtCredential, error)
 	if apiKey.RevokedAt != nil {
 		return nil, api_error_code.ErrPermissionDenied
 	}
-	return &jwtCredential{userID: apiKey.UserID, apiKey: apiKey}, nil
+	return &authCredential{userID: apiKey.UserID, apiKey: apiKey}, nil
 }
 
-// resolveAccessToken 校验 JWT 与未撤销、未过期的 session，返回用户标识与 session。不查用户。
-func resolveAccessToken(ctx context.Context, tokenValue string) (*jwtCredential, error) {
+// authVerifyAccessToken 校验 JWT 与未撤销、未过期的 session，返回用户标识与 session。
+func authVerifyAccessToken(ctx context.Context, tokenValue string) (*authCredential, error) {
 	claims, err := parseAccessToken(tokenValue)
 	if err != nil {
 		return nil, err
@@ -668,11 +673,11 @@ func resolveAccessToken(ctx context.Context, tokenValue string) (*jwtCredential,
 	if !time.Now().UTC().Before(session.ExpiresAt) {
 		return nil, api_error_code.ErrPermissionDenied
 	}
-	return &jwtCredential{userID: claims.UserID, session: session}, nil
+	return &authCredential{userID: claims.UserID, session: session}, nil
 }
 
-// admitJWTCredential 按用户标识查用户，不存在则返回权限错误，并写入同一份身份。API key 在查到用户后节流回写 last_used_at。
-func admitJWTCredential(ctx context.Context, credential *jwtCredential) (context.Context, error) {
+// authLoadUserIdentity 查询用户并写入 context；API key 的使用时间至多每分钟更新一次。
+func authLoadUserIdentity(ctx context.Context, credential *authCredential) (context.Context, error) {
 	db, err := storage.GormDB(ctx)
 	if err != nil {
 		return ctx, err
@@ -687,10 +692,15 @@ func admitJWTCredential(ctx context.Context, credential *jwtCredential) (context
 	if credential.apiKey != nil {
 		now := time.Now().UTC()
 		if credential.apiKey.LastUsedAt == nil || now.Sub(*credential.apiKey.LastUsedAt) >= apiKeyLastUsedWriteInterval {
-			if updateErr := db.Model(&authModel.AuthAPIKey{}).Where("api_key_id = ?", credential.apiKey.APIKeyID).Update("last_used_at", now).Error; updateErr != nil {
-				return ctx, updateErr
+			update := db.Model(&authModel.AuthAPIKey{}).
+				Where("api_key_id = ? AND revoked_at IS NULL AND (last_used_at IS NULL OR last_used_at <= ?)", credential.apiKey.APIKeyID, now.Add(-apiKeyLastUsedWriteInterval)).
+				Update("last_used_at", now)
+			if update.Error != nil {
+				return ctx, update.Error
 			}
-			credential.apiKey.LastUsedAt = &now
+			if update.RowsAffected > 0 {
+				credential.apiKey.LastUsedAt = &now
+			}
 		}
 	}
 	return context.WithValue(ctx, authenticatedIdentityContextKey{}, &authenticatedIdentity{
@@ -698,7 +708,7 @@ func admitJWTCredential(ctx context.Context, credential *jwtCredential) (context
 	}), nil
 }
 
-// AuthenticatedUser 供业务方法读取准入门禁下传的当前用户与会话；非 Public 方法执行时必有。
+// AuthenticatedUser 读取本地账户门禁写入的用户与会话；缺少身份时返回权限错误。
 // 凭证为 API key 时 session 为 nil。
 func AuthenticatedUser(ctx context.Context) (*ability_user_model.User, *authModel.AuthSession, error) {
 	identity, err := identityFromContext(ctx)

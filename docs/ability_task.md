@@ -77,7 +77,7 @@ stateDiagram-v2
 
 # 3. 方法契约
 
-受保护方法 wire 必传 `arguments.jwt_token`，由 API 门禁统一验证并消费（验证后即移除），业务层零感知；本文方法签名只列业务参数，入参 schema 权威见 [`api_methods.md`](api_methods.md)。
+受保护方法由 API 门禁统一验证凭证，身份经 context 下传；凭证来源见 [`ability_auth.md`](ability_auth.md)。本文方法签名只列业务参数，入参 schema 权威见 [`api_methods.md`](api_methods.md)。
 
 无属主任务（Public 异步方法产生，`user_id` NULL）不可经下列方法查询或取消。
 

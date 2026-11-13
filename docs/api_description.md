@@ -114,7 +114,9 @@ type SupportedMethod struct {
 }
 ```
 
-`Public` 零值为受保护：`APIExecuter` 在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证凭证。凭证来源两处：协议 Adapter 从本协议的 HTTP `Authorization: Bearer` 头（gRPC 为 `authorization` metadata）取值经 `api_auth_session.WithBearerToken` 写入 context；或调用方显式放在 `arguments.jwt_token`（优先）。jwt 类型按前缀分流：`key_` 是用户级 API key，其余是自签 JWT。验证后 `jwt_token` 从 `arguments` 移除，身份经 context 下传。MCP Adapter 对外描述工具时用 `InputSchemaWithoutGateToken()` 去掉 `jwt_token`，凭证只走标准 HTTP 头。
+`Public` 零值为受保护：`APIExecuter` 在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证凭证。协议 Adapter 从 HTTP `Authorization: Bearer` 头（gRPC 为 `authorization` metadata，WebSocket 为握手头）取值经 `api_auth_session.WithBearerToken` 写入 context。JSON-RPC、WebSocket、gRPC 也支持兼容字段 `arguments.jwt_token`（非空时优先于头）；浏览器原生 WebSocket 使用该字段。调用方每次只带一种凭证，也只选一个携带位置（头或兼容字段）。MCP 对外 schema 用 `InputSchemaWithoutGateToken()` 去掉 `jwt_token`，凭证走标准 HTTP 头。
+
+`auth_type` 一次只开一种。`jwt`：`key_` 前缀单独校验 API key（明文 sha256 查库、对上用户、未吊销，不是 JWT 校验），其余校验自签 JWT 和未撤销 session；两边都通过之后才共路，加载同一个 DB 用户再进 Execute，身份是 UserID。`api_key_id` 是签发时另生成的 UUID 行句柄，不是调用方身份。签发、吊销、删除 API key 只能走已登录 session。`bridge`：外部 IdP 令牌本地公钥验签，身份是 claims，没有本地用户行；不接受本地 `api_key`，也没有拿外部系统的 api key 在本地当凭证的入口。门禁处理后 `jwt_token` 从 `arguments` 移除。完整生命周期见 [`ability_auth.md`](ability_auth.md)。
 
 `InputSchema` 只用于 MCP `tools/list` 描述 `arguments`，不是 Ability 的业务执行参数。
 

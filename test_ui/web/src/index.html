@@ -79,10 +79,10 @@
             name="test-access-token"
             type="password"
             value=""
-            placeholder="access token"
+            placeholder="自签 JWT 或 key_"
             autocomplete="off"
             spellcheck="false"
-            title="受保护方法：REST 走 Authorization: Bearer，MCP / JSON-RPC 走 arguments.jwt_token"
+            title="一次调用只带一种凭证：自签 JWT，或本服务签发的 key_ API key。两种校验不同。HTTP 示例用 Authorization: Bearer；WebSocket / gRPC 示例用 arguments.jwt_token"
           />
           <label for="test-org-id">组织</label>
           <input

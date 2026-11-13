@@ -82,6 +82,7 @@ type HistoryItem = {
   method: string;
   protocol: Protocol;
   status: number;
+  successful: boolean;
   duration: number;
 };
 
@@ -192,7 +193,7 @@ const protocolLabels: Record<Protocol, string> = {
   grpc: "gRPC",
   rest: "REST",
 };
-const jwtTokenPlaceholder = "<access_token>";
+const authCredentialPlaceholder = "<jwt_or_key_>";
 const orgIDPlaceholder = "<org_id>";
 
 function generateRequestID(): string {
@@ -384,9 +385,13 @@ function applyCatalogSelection(): void {
 }
 
 function paramsForSelection(): Record<string, unknown> {
+  const argumentsValue = paramsFromSchema(selectedItem?.inputSchema);
+  if (selectedItem?.protected && (protocol === "jsonrpc" || protocol === "mcp")) {
+    delete argumentsValue.jwt_token;
+  }
   return {
     name: selectedItem?.toolName ?? "",
-    arguments: paramsFromSchema(selectedItem?.inputSchema),
+    arguments: argumentsValue,
   };
 }
 
@@ -423,7 +428,7 @@ function fillTestAccount(params: Record<string, unknown>): void {
 // 页面不替方法多加一个键（后端 schema 严格键集，多一个即拒）。
 function fillGateArguments(params: Record<string, unknown>): void {
   if (Object.prototype.hasOwnProperty.call(params, "jwt_token")) {
-    params.jwt_token = testAccessTokenInput.value || jwtTokenPlaceholder;
+    params.jwt_token = testAccessTokenInput.value || authCredentialPlaceholder;
   }
   if (Object.prototype.hasOwnProperty.call(params, "org_id")) {
     params.org_id = testOrgIDInput.value || orgIDPlaceholder;
@@ -491,8 +496,7 @@ function valueFromSchema(
   return null;
 }
 
-// defaultHeaders 按协议出默认头：REST 受保护路由带 Authorization / X-Org-Id 占位；
-// MCP 带协议版本与 tools/call 提示头；WS / gRPC 无 HTTP 头。
+// defaultHeaders 为 HTTP 请求填入协议头与受保护方法的 Bearer 凭证。
 function defaultHeaders(): Record<string, string> {
   if (protocol === "websocket" || protocol === "grpc") {
     return {};
@@ -507,12 +511,14 @@ function defaultHeaders(): Record<string, string> {
     headers["Mcp-Method"] = "tools/call";
     headers["Mcp-Name"] = selectedItem?.toolName ?? "";
   }
+  if (selectedItem?.protected) {
+    headers.Authorization = `Bearer ${testAccessTokenInput.value || authCredentialPlaceholder}`;
+  }
   if (protocol === "rest") {
     if (!selectedItem?.rest?.requestSchema) {
       delete headers["Content-Type"];
     }
     if (selectedItem?.protected) {
-      headers.Authorization = `Bearer ${testAccessTokenInput.value || jwtTokenPlaceholder}`;
       headers["X-Org-Id"] = testOrgIDInput.value || orgIDPlaceholder;
     }
   }
@@ -689,11 +695,11 @@ function writeEnvelope(envelope: RequestEnvelope): void {
 function syncTestAccountToRequest(): void {
   try {
     const envelope = parseEnvelope();
+    if (Object.prototype.hasOwnProperty.call(envelope.headers, "Authorization")) {
+      envelope.headers.Authorization = `Bearer ${testAccessTokenInput.value || authCredentialPlaceholder}`;
+    }
     if (protocol === "rest") {
       fillTestAccount(envelope.body);
-      if (Object.prototype.hasOwnProperty.call(envelope.headers, "Authorization")) {
-        envelope.headers.Authorization = `Bearer ${testAccessTokenInput.value || jwtTokenPlaceholder}`;
-      }
       if (Object.prototype.hasOwnProperty.call(envelope.headers, "X-Org-Id")) {
         envelope.headers["X-Org-Id"] = testOrgIDInput.value || orgIDPlaceholder;
       }
@@ -910,8 +916,7 @@ async function sendRequest(): Promise<void> {
       return;
     }
     lastResponse = result;
-    showResponse(result);
-    addHistory(result);
+    addHistory(result, showResponse(result));
   } catch (error) {
     showCommunicationError(
       0,
@@ -934,25 +939,25 @@ function setLoading(loading: boolean): void {
   }
 }
 
-function showResponse(response: ProxyResponse): void {
+function showResponse(response: ProxyResponse): boolean {
   responseEmpty.classList.add("is-hidden");
   responseCode.classList.remove("is-hidden");
   copyResponseButton.disabled = false;
 
   const communicationError = response.errorKind === "communication";
   const protocolError = response.protocolError === true;
-  const rpcError =
-    !communicationError && !protocolError && hasRPCError(response.body);
+  const callError =
+    !communicationError && !protocolError && apiResponseHasError(response.body);
   const successful =
     !communicationError &&
     !protocolError &&
     isSuccessfulStatus(response.status) &&
-    !rpcError;
+    !callError;
   const statusLabel = protocolError
     ? response.statusText
     : communicationError
       ? `${response.status || "—"} COMM`
-      : `${response.status}${rpcError ? " RPC" : ""}`;
+      : `${response.status}${callError ? " ERROR" : ""}`;
   responseMeta.innerHTML = `
     <span class="status-pill ${successful ? "is-success" : "is-error"}">
       ${escapeHTML(statusLabel)}
@@ -961,6 +966,7 @@ function showResponse(response: ProxyResponse): void {
     <span>${formatBytes(response.size)}${response.wasTruncated ? " · truncated" : ""}</span>
   `;
   renderResponseView();
+  return successful;
 }
 
 function showCommunicationError(
@@ -989,8 +995,7 @@ function showCommunicationError(
     tab.setAttribute("aria-selected", String(active));
   }
   lastResponse = response;
-  showResponse(response);
-  addHistory(response);
+  addHistory(response, showResponse(response));
 }
 
 function isSuccessfulStatus(status: number): boolean {
@@ -1000,10 +1005,16 @@ function isSuccessfulStatus(status: number): boolean {
   );
 }
 
-function hasRPCError(body: string): boolean {
+function apiResponseHasError(body: string): boolean {
   try {
-    const parsed = JSON.parse(body) as { error?: unknown };
-    return parsed !== null && typeof parsed === "object" && parsed.error != null;
+    const parsed = JSON.parse(body) as {
+      error?: unknown;
+      result?: { isError?: boolean };
+    };
+    return (
+      parsed !== null && typeof parsed === "object" &&
+      (parsed.error != null || parsed.result?.isError === true)
+    );
   } catch {
     return false;
   }
@@ -1062,11 +1073,12 @@ function formatBytes(size: number): string {
   return `${(size / 1024).toFixed(1)} KB`;
 }
 
-function addHistory(response: ProxyResponse): void {
+function addHistory(response: ProxyResponse, successful: boolean): void {
   history.unshift({
     method: selectedItem?.toolName ?? selectedItem?.rpcMethod ?? "unknown",
     protocol,
     status: response.status,
+    successful,
     duration: response.durationMs,
   });
   history.splice(6);
@@ -1087,7 +1099,7 @@ function renderHistory(): void {
       item.innerHTML = `
         <span class="history-protocol">${protocolLabels[entry.protocol]}</span>
         <strong>${escapeHTML(entry.method)}</strong>
-        <span class="${entry.status >= 200 && entry.status < 300 || entry.protocol === "websocket" && entry.status === 101 ? "history-ok" : "history-failed"}">${entry.status}</span>
+        <span class="${entry.successful ? "history-ok" : "history-failed"}">${entry.status}</span>
         <small>${entry.duration} ms</small>
       `;
       return item;

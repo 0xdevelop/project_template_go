@@ -41,6 +41,33 @@ flowchart LR
     Adapter -.-> Caller
 ```
 
+### 准入凭证三条路
+
+自有客户端的 session 和非自有客户端的 API key 是两套凭证，可以进同一条调用链，校验环节必须分开。下图只标区别，方法契约见 [`docs/ability_auth.md`](docs/ability_auth.md)。
+
+```mermaid
+flowchart TB
+    ownClient["自有客户端（session 级）"] --> jwtCred["凭证：jwt_token（自签 JWT）"]
+    jwtCred --> jwtCheck["校验环节：验 session / JWT"]
+
+    extProgram["非自有客户端、跨业务程序"] --> keyCred["凭证：本服务签发的 api_key（Bearer 里 key_ 前缀）"]
+    keyCred --> keyCheck["校验环节：明文 sha256 查库、对上用户、未吊销"]
+
+    jwtCheck --> sharedUser["共路：加载同一个 DB 用户身份"]
+    keyCheck --> sharedUser
+    sharedUser --> execute["业务 Execute"]
+
+    jwtCheck --> manageKey["签发 / 吊销 / 删除 api_key（只能已登录 session，不能拿另一把 key）"]
+    manageKey -.-> extProgram
+
+    idp["外部 IdP"] --> bridgeCred["凭证：IdP 签发的令牌（不是本地 api_key，不接受 key_）"]
+    bridgeCred --> bridgeCheck["校验环节：本地公钥验签"]
+    bridgeCheck --> bridgeId["身份是 claims，没有本地用户行"]
+    bridgeId --> bridgeExecute["业务 Execute"]
+```
+
+`jwt_token` 校验的是自签 JWT 和未撤销的 session；`api_key` 校验的是库里的 sha256、所属用户和未吊销，这不是 JWT 校验。两边都通过之后才共路，加载同一个 DB 用户再进业务 Execute；校验本身不共路。签发、吊销、删除 API key 只从已登录 session 出去，key 不能管理 key。`auth_type=bridge` 是第三条：外部 IdP 令牌用本地公钥验签，身份是 claims，不进上面的用户共路；`key_` 在这条路上不是凭证，本仓也没有拿外部系统的 api key 在本地当凭证的入口。部署上 `auth_type` 一次只开一种：`jwt` 走前两条，`bridge` 走第三条。
+
 ### 模块职责
 
 ```text
@@ -51,7 +78,7 @@ project_template_go
 │   ├── api_mcp                MCP 接入（官方 Go SDK，协议 2026-07-28）
 │   ├── api_websocket          WebSocket 接入并写回原 connection
 │   ├── api_grpc               单一 APIService.Call RPC（proto 源 + 生成物分目录）
-│   ├── api_executer           唯一业务执行入口，统一提取、编解码与准入门禁（非 Public 方法验 jwt_token，验后即从 arguments 移除）
+│   ├── api_executer           唯一业务执行入口，统一提取、编解码与准入门禁
 │   ├── api_supported_methods  方法描述、Execute、Public 标志与有序目录（文档唯一事实源）
 │   ├── api_auth               API 权限准入域：验证码、注册、登录、session/JWT、API key、统一门禁（契约见 docs/ability_auth.md）
 │   └── api_error_code         通用业务错误码
@@ -69,7 +96,7 @@ project_template_go
 ### 关键约束（全文见 `AGENTS.md`）
 
 - `APIExecuter` 是唯一执行入口，不维护业务 `switch`；新增业务方法只在 Ability 子包注册并由直属父包加载。
-- 统一准入门禁：非 `Public` 方法 Execute 前经 `api_auth_session` 验证 `Authorization: Bearer` 或 `arguments.jwt_token`（`key_` 为 API key，其余为 JWT），验证后即从 arguments 移除（schema 由注册表按非 Public 自动注入），身份经 context 下传；`ability` 树内零鉴权代码（Auth/User 契约见 [`docs/ability_auth.md`](docs/ability_auth.md) / [`docs/ability_user.md`](docs/ability_user.md)）。
+- 统一准入门禁见上一节「准入凭证三条路」，契约见 [`docs/ability_auth.md`](docs/ability_auth.md)，User 边界见 [`docs/ability_user.md`](docs/ability_user.md)；`ability` 树内零鉴权代码。
 - 业务失败统一 `CallToolResult`（HTTP 200 + `isError=true`）；协议错误只留给外壳损坏与服务故障。
 - 异步任务以 MySQL 记录为持久化排队区，Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 填充空闲名额；详见 [`docs/ability_task.md`](docs/ability_task.md)。
 - Policy 单大循环、临时 Worker 释放、同类维护任务防重入与重启续跑契约见 [`docs/ability_policy.md`](docs/ability_policy.md)。

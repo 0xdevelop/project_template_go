@@ -16,8 +16,9 @@ type AuthSession struct {
 	RevokedAt        *time.Time `gorm:"index"`
 }
 
-// AuthAPIKey 是用户级长期凭证。明文只在签发时返回一次，库中存 sha256；
-// 调用方以 Authorization: Bearer 或 arguments.jwt_token 交给统一门禁。
+// AuthAPIKey 是用户级长期凭证。明文只在签发时返回一次，库中存 sha256。
+// APIKeyID 是签发时另生成的 UUID 行句柄，不是调用方身份；身份是 UserID。
+// 调用方一次只带一种凭证：Authorization: Bearer key_…，或兼容字段 arguments.jwt_token。
 type AuthAPIKey struct {
 	gorm.Model
 	APIKeyID   string `gorm:"type:char(36);not null;uniqueIndex"`

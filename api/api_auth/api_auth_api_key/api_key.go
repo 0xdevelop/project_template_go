@@ -1,5 +1,6 @@
 // Package api_auth_api_key 签发、列出、吊销与删除用户级 API key（auth.api_key.*）。
-// key 经 Authorization: Bearer 或 arguments.jwt_token 进入统一门禁。
+// 携带入口是 Authorization: Bearer key_…，或兼容字段 arguments.jwt_token（一次只带一种）。
+// 校验是 sha256 查库，不是 JWT 校验。
 package api_auth_api_key
 
 import (
@@ -7,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_common"
 	authModel "github.com/0xdevelop/project_template_go/api/api_auth/api_auth_model"
@@ -41,7 +43,7 @@ func LoadAPIMethods() {
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodAPIKeyList,
-		Description: "列出当前用户的 API key，不含明文与哈希。",
+		Description: "列出当前用户的 API key，不含明文与哈希；时间字段为 UTC 毫秒字符串。",
 		InputSchema: api_auth_common.InputSchema(map[string]interface{}{}),
 		Execute:     AuthAPIKeyList,
 	})
@@ -71,20 +73,29 @@ func LoadAPIMethods() {
 
 // APIKeyRecord 是对外返回的 key 视图：不含哈希。
 type APIKeyRecord struct {
-	APIKeyID   string     `json:"api_key_id"`
-	UserID     string     `json:"user_id"`
-	Name       string     `json:"name"`
-	KeyPrefix  string     `json:"key_prefix"`
-	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	APIKeyID   string `json:"api_key_id"`
+	UserID     string `json:"user_id"`
+	Name       string `json:"name"`
+	KeyPrefix  string `json:"key_prefix"`
+	CreatedAt  int64  `json:"created_at,string"`
+	LastUsedAt *int64 `json:"last_used_at,omitempty,string"`
+	RevokedAt  *int64 `json:"revoked_at,omitempty,string"`
 }
 
 func recordOf(apiKey *authModel.AuthAPIKey) *APIKeyRecord {
-	return &APIKeyRecord{
+	record := &APIKeyRecord{
 		APIKeyID: apiKey.APIKeyID, UserID: apiKey.UserID, Name: apiKey.Name,
-		KeyPrefix: apiKey.KeyPrefix, CreatedAt: apiKey.CreatedAt.UTC(), LastUsedAt: apiKey.LastUsedAt, RevokedAt: apiKey.RevokedAt,
+		KeyPrefix: apiKey.KeyPrefix, CreatedAt: apiKey.CreatedAt.UnixMilli(),
 	}
+	if apiKey.LastUsedAt != nil {
+		millis := apiKey.LastUsedAt.UnixMilli()
+		record.LastUsedAt = &millis
+	}
+	if apiKey.RevokedAt != nil {
+		millis := apiKey.RevokedAt.UnixMilli()
+		record.RevokedAt = &millis
+	}
+	return record
 }
 
 // sessionCaller 只接受登录 session：签发、吊销和删除不允许用 key 换 key。
@@ -109,7 +120,7 @@ func AuthAPIKeyIssue(ctx context.Context, input interface{}) (interface{}, error
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	name, nameOK := api_auth_common.RequiredString(params, "name")
-	if !nameOK || len(name) > 64 {
+	if !nameOK || utf8.RuneCountInString(name) > 64 {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	secret, err := api_auth_common.NewRandomToken()

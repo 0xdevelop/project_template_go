@@ -21,7 +21,7 @@ User 域持有 User model、用户查询和密码处理。Auth 只调用 User �
 
 # 2. 方法契约
 
-受保护方法 wire 必传 `arguments.jwt_token`，由 API 门禁统一验证并消费（验证后即移除），业务层零感知；入参 schema 权威见 [`api_methods.md`](api_methods.md)。
+受保护方法由 API 门禁统一验证凭证，身份经 context 下传；凭证来源见 [`ability_auth.md`](ability_auth.md)，入参 schema 权威见 [`api_methods.md`](api_methods.md)。
 
 ## 2.1. user.nickname.change
 

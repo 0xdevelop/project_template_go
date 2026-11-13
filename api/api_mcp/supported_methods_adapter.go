@@ -86,7 +86,7 @@ func executeSupportedMethod(ctx context.Context, request *mcp.CallToolRequest, m
 	}
 
 	userAgent := mcpRequestUserAgent(request)
-	// 门禁凭证走标准 MCP HTTP 头：Authorization: Bearer <jwt>。
+	// 门禁凭证走标准 MCP HTTP Authorization: Bearer 头。
 	ctx = api_auth_session.WithBearerToken(ctx, mcpRequestHeader(request, "Authorization"))
 	callParams := map[string]interface{}{
 		"name":      methodName,

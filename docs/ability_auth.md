@@ -21,6 +21,7 @@
     - [3.14. auth.api_key.delete](#314-authapi_keydelete)
 - [4. 数据与并发纪律](#4-数据与并发纪律)
 - [5. 验收边界](#5-验收边界)
+    - [5.1. auth_type=bridge（身份桥接形态）](#51-auth_typebridge身份桥接形态)
 - [6. 实现进度](#6-实现进度)
 
 <!-- /TOC -->
@@ -32,6 +33,8 @@ Auth 是 **API 准入域**：实现整体位于 `api/api_auth`（不在 `ability
 预期目的：提供真实可用、可失效、可审计且不泄露敏感身份信息的验证码、登录和 token 链路。Auth 负责认证编排；User 数据、密码变更和手机号绑定属于 User 域。
 
 User 边界：绑定手机号保存在 `users.bind_phone`，未绑定为 `NULL`。Auth 通过 User 包方法取得对应用户，不直接查询 User model，也不保存或暴露 `PasswordHash`；注册和登录只调用 User 包方法。手机号绑定、解绑、修改与密码变更属于 User 域，完整边界见 [`ability_user.md`](ability_user.md)。
+
+本地账户形态下有两条凭证，校验不共路。自有客户端继续用 `jwt_token`：验自签 JWT 和未撤销的 session。非自有客户端、跨业务程序用本服务签发的 `api_key`：`Authorization: Bearer` 里 `key_` 前缀，明文 sha256 查库、对上用户、未吊销；这不是 JWT 校验。一次调用只带一种凭证。两边都通过之后才共路，加载同一个 DB 用户再进业务 Execute；身份是 UserID。签发、吊销、删除 API key 只能走已登录 session，key 不能管理 key。已登录 session 和 API key 都可以读取自己的 key 列表。API key 不能代替 refresh token，也不能退出 session。
 
 # 2. 业务流转
 
@@ -53,13 +56,17 @@ Session / JWT 生命周期：
 ```mermaid
 flowchart LR
     Login["register / login.*"] --> Session["签发 session：jwt_token + refresh_token（只存哈希）"]
-    Session --> Check["jwt_token.check：门禁验证，返回当前身份"]
+    Session --> Check["jwt_token.check：验自签 JWT 与未撤销 session"]
     Session --> Refresh["jwt_token.refresh：轮换 refresh token，签发新 JWT"]
     Refresh --> Session
     Session --> Logout["logout：撤销 session，原 token 即时失效"]
     Session --> Issue["auth.api_key.issue：签发 key_ 前缀的 API key（只存哈希）"]
-    Issue --> Gate["门禁：Authorization: Bearer key_… 按哈希查 key，吊销即拒"]
+    Issue --> KeyCheck["api_key 校验：sha256 查库、对上用户、未吊销"]
+    Check --> Shared["各自通过后共路：加载同一个 DB 用户"]
+    KeyCheck --> Shared
 ```
+
+`api_key_id` 是签发时另生成的 UUID 行句柄，用来列表、吊销、删除和回写最近使用，不是调用方身份。`auth_type=bridge` 不走这张图，见 5.1。
 
 # 3. 方法契约
 
@@ -145,7 +152,7 @@ flowchart LR
 
 ## 3.9. auth.jwt_token.check
 
-检查当前凭证（JWT 或 API key）并返回调用方身份：`user`、`auth_source`（`session` / `api_key`）。JWT 另带 `session_expires_at`；API key 另带 `api_key_id`。业务参数为空。
+按本次凭证分别检查：自签 JWT 走 session 校验，`key_` 走 API key 的 sha256 校验。返回用户身份 `user`（UserID）和凭证来源 `auth_source`（`session` / `api_key`）。JWT 另带 `session_expires_at`。API key 另带 `api_key_id`：签发时另生成的 UUID 行句柄，用来列表、吊销、删除和回写最近使用，不是调用方身份。业务参数为空。方法名保持 `auth.jwt_token.check`。bridge 形态身份是外部 claims，没有本地用户行，不适用本方法。
 
 ```json
 {}
@@ -163,7 +170,7 @@ flowchart LR
 
 ## 3.11. auth.api_key.issue
 
-签发当前用户的一把 API key（`key_` 前缀，明文只返回一次；库中仅存 sha256）。宿主以 `Authorization: Bearer <api_key>` 携带，也可放在 `arguments.jwt_token`（优先于头）。只有登录 session 可签发，API key 自身不能再签发。
+签发当前用户的一把 API key（`key_` 前缀，明文只返回一次；库中仅存 sha256）。调用方在同一入口带 `Authorization: Bearer key_…`；JSON-RPC、WebSocket、gRPC 也可把这一把 key 放进兼容字段 `arguments.jwt_token`。字段名不表示 API key 走 JWT 校验。一次调用只带一种凭证。只有登录 session 可签发，API key 自身不能再签发。名称按 Unicode 字符计数，不按 UTF-8 字节数截断。
 
 ```json
 { "name": "workstation" }
@@ -172,6 +179,8 @@ flowchart LR
 ## 3.12. auth.api_key.list
 
 列出当前用户的 API key 记录（名称、前缀、创建 / 最近使用 / 吊销时间），不含明文与哈希。session 与 API key 调用者均可读自己的记录。
+
+API key 记录中的 `created_at`、`last_used_at`、`revoked_at` 使用 UTC 毫秒时间戳的十进制字符串（如 `"1794542400000"`）；后两项无值时省略。签发、列表、吊销和删除返回同一种记录结构。
 
 ```json
 {}
@@ -197,9 +206,12 @@ flowchart LR
 
 - 验证码不得明文落库、写日志或进入响应（唯一例外：Debug 运行模式可写 Debug 日志供本地联调，Release/Test 禁止），必须具备 TTL、尝试次数、发送间隔、小时发送上限和消费状态。
 - JWT 必须固定签名算法、issuer、audience、有效期和 token 类型。
-- 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权——入口按 `auth_cfg.auth_type` 分发类型（缺省 `jwt`，`bridge` 见 5.1；非法值 fail-closed 拒绝全部受保护方法）。凭证取值顺序：显式 `arguments.jwt_token` 优先，否则用协议 Adapter 经 `WithBearerToken` 写入 context 的 `Authorization: Bearer` 头值。jwt 类型按前缀分流：`key_` 只查哈希并拒已吊销，其余验签并确认 session 有效；两条由同一处查用户，不存在则拒绝，再写入同一份身份。API key 在查到用户后节流回写 `last_used_at`。无论开关状态 `jwt_token` 均从 arguments 移除，身份经 context 下传；业务可读 `AuthenticatedUser(ctx)`，需要区分 session 与 API key 时用 `AuthenticatedCaller(ctx)`。`jwt_token` 入参 schema 由方法注册表按非 Public 恒定注入为**可选项**（不随开关变化），业务注册禁止声明，MCP 对外 schema 不含它。
+- 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权，入口按 `auth_cfg.auth_type` 分发（缺省 `jwt`，`bridge` 见 5.1；非法值 fail-closed）。`auth_type` 一次只开一种。`jwt` 形态校验不共路：`key_` 走 API key（明文 sha256 查库、对上用户、未吊销），其余走自签 JWT 和未撤销 session。两边都通过之后才共路，加载同一个 DB 用户再进 Execute；用户不存在则拒绝。身份是 UserID。一次调用只带一种凭证。
+- 凭证携带：HTTP 使用 `Authorization: Bearer <凭证>`，gRPC 使用 `authorization` metadata，WebSocket 支持握手头；JSON-RPC、WebSocket、gRPC 同时保留兼容字段 `arguments.jwt_token`，非空时优先于头。每次调用只带一种凭证，也只选一个携带位置。浏览器原生 WebSocket 无法设置 Authorization 头，使用兼容字段。MCP 使用标准 HTTP 头，对外 schema 不含 `jwt_token`。
+- 身份传递：无论门禁开关状态，非 Public 方法的 `jwt_token` 都在 Execute 或异步受理前移除。业务用 `AuthenticatedUser(ctx)` 读取本地用户（API key 的 session 为 nil）。`AuthenticatedCaller(ctx)` 读出的身份是 UserID，并带凭证来源；`APIKeyID` 只在来源为 `api_key` 时带出 key 行句柄，不是调用方身份。缺少对应身份则返回权限错误。非 Public 方法的兼容字段由注册表恒定注入为可选项，业务不得重复声明。
+- API key 的 `last_used_at` 在用户存在后更新；数据库条件保证同一把 key 每分钟至多写入一次，并发旧读取不能覆盖更新的使用时间。查询或更新时间写入失败时拒绝本次调用，不伪造认证成功。
 - 门禁开关 `auth_cfg.enabled`：缺省启用（段/键缺席均按启用处理，fail-closed 取向）；显式 `enabled: false` 时门禁放行且**不提供身份**——依赖 `AuthenticatedUser(ctx)` 的方法照常返回权限错误（不造匿名/系统假身份），适用无用户体系的部署形态。
-- Auth 配置校验纪律同样覆盖 `auth_cfg.auth_type`（仅认 `jwt`，非法值 warning + 全部受保护方法拒绝）。
+- Auth 配置校验纪律同样覆盖 `auth_cfg.auth_type`（支持 `jwt` / `bridge`，非法值 warning + 全部受保护方法拒绝）。
 - `storage` 包是唯一存储入口。查询和写入使用 `GormDB(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `GormAutoMigrate` 同步，不得经另一连接池、原始 DDL、数据库 CLI 或外部脚本修改。
 - 多关系库并存时，Auth/User 经 `GormDB(ctx)` 使用 `storage_cfg.primary` 指定的主库；程序固定存储与 Ability 独立实例的边界见 [存储说明](storage.md)。
 - 邮件通道供应商由 auth 配置 `email.provider` 选择，当前仅支持 `resend`（Resend 官方 Go SDK）；配置进入 `config.FileConfig` 的 YAML/JSON/TOML 体系。
@@ -217,25 +229,27 @@ flowchart LR
 - 邮箱密码登录成功。
 - 已验证手机号密码登录成功。
 - JWT check、refresh rotation 和 logout 失效真实可用。
+- API key 经 Bearer 头可用；吊销、删除或所属用户不存在时拒绝，且不能签发/吊销/删除 key 或退出 session。
+- 并发 API key 调用不重复回写使用时间；中文名称边界与时间字段格式符合方法契约。
 - SMS 相关调用和手机号验证码登录返回 `API_METHOD_NOT_SUPPORTED`。
 - 四种协议的业务失败均使用正常协议状态和相同业务返回值。
 
-# 5.1 auth_type=bridge（身份桥接形态）
+## 5.1. auth_type=bridge（身份桥接形态）
 
 `auth_cfg.auth_type: bridge` 时本服务不签发令牌：令牌由外部 IdP 签发，本服务用 IdP
-公钥本地验签（`api/api_auth/api_auth_bridge`），并在本地管理这批外部令牌。
+公钥本地验签（`api/api_auth/api_auth_bridge`），并在本地管理这批外部令牌。这条路不接受本地 `api_key`，`key_` 不是凭证，也没有拿外部系统的 api key 在本地当凭证的入口。`auth_type` 一次只开一种：`jwt` 走本地账户的两条凭证，`bridge` 只走本条。
 
 - 配置 `auth_cfg.bridge.*`：`issuer`（IdP 标识）、`allowed_algs`（缺省 `[ES256]`，
   禁 `none` 与空串）、`public_key_path`（PKIX PEM，P-256，必填）、`leeway_seconds`
   （缺省 60）、`revocation_enabled`（缺省 true）、`revocation_max_ttl_seconds`
   （缺省 86400，应 >= IdP access token 最长寿命）。
 - 门禁分支：`AuthenticateRequest` → `authenticateRequestWithBridge`——验
-  `arguments.jwt_token` → 查本地吊销 → claims 下传 context；业务用
+  Bearer 头或兼容字段中的外部令牌 → 查本地吊销 → claims 下传 context；业务用
   `AuthenticatedBridgePrincipal(ctx)` 读身份。
 - 吊销判定：令牌 `iat` < 用户登出时刻 → 拒；`iat` 缺席且有登出记录 → 拒；
   查询失败 fail-closed 拒。登出方法在转发 IdP 成功后调
   `api_auth_bridge.RevokeUserTokens(ctx, userID, retain)`。
-- 自签发域（login/register/verify_code/session 库表）在 bridge 形态下不适用；
+- 自签发域（login/register/verify_code/session 和 API key）在 bridge 形态下不适用；
   实例应将取令牌入口交给 IdP（直连或聚合转发），本地只保留需要吊销钩子的登出包装。
 
 # 6. 实现进度
@@ -253,6 +267,7 @@ flowchart LR
 - [ ] 🟡 DONE — `auth.login.email`、`auth.login.phone` 登录语义已实现（login.phone 待手机号绑定实现后验收）。
 - [ ] 🟡 DONE — `auth.jwt_token.check/refresh` 与 `auth.logout` 已接入。
 - [ ] 🟡 DONE — 用户级 API key：`auth.api_key.issue/list/revoke/delete`；门禁对 `Authorization: Bearer` 与 `arguments.jwt_token` 按 `key_` 前缀分流，库中只存 sha256，吊销或删除后立即拒绝。
+- [ ] 🟡 DONE — JWT 与 API key 校验分开，通过后才共用用户查询和身份写入。身份是 UserID；`api_key_id` 是行句柄，不是调用方身份。API key 使用时间条件更新、Unicode 名称计数和 UTC 毫秒字符串已实现，真实 App 联调单独验收。
 - [ ] 🟡 DONE — Auth 业务失败已复用 API 通用错误码，并完成四协议 `CallToolResult` 验证。
 - [ ] 🟡 DONE — 可选绑定手机号字段为 `users.bind_phone`。
 - [ ] 🟡 DONE — 使用有效 Resend 配置完成真实邮箱主流程验收。

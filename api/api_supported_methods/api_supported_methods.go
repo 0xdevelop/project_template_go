@@ -47,7 +47,7 @@ func jwtTokenSchema() map[string]interface{} {
 		"type":        "string",
 		"minLength":   1,
 		"maxLength":   8192,
-		"description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
+		"description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
 	}
 }
 

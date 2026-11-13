@@ -229,6 +229,7 @@ const unifiedCallBody = `
   "params": {
     "name": "auth.login.email",
     "arguments": {
+      "login_method": "password",
       "email": "user@example.com",
       "password": "password"
     }
@@ -242,9 +243,13 @@ const unifiedCallBody = `
 ` + "`{\"error_code\":...,\"error_msg\":\"...\"}`" + `。
 
 **凭证怎么带**：除 Public 方法（` + "`test`" + `、验证码、注册、登录、refresh）外，每个方法都经统一
-准入门禁。四种协议统一以 HTTP ` + "`Authorization: Bearer <jwt 或 API key>`" + ` 头（gRPC 为 ` + "`authorization`" + `
-metadata）携带凭证，` + "`key_`" + ` 前缀是用户级 API key，其余是自签 JWT；也可显式放在 ` + "`arguments.jwt_token`" + `（优先于头，门禁验证后移除，业务方法不可见）。
-MCP ` + "`tools/list`" + ` 只暴露业务入参，不含 ` + "`jwt_token`" + `。
+准入门禁。HTTP 使用 ` + "`Authorization: Bearer <凭证>`" + ` 头，gRPC 使用 ` + "`authorization`" + ` metadata，
+WebSocket 可在握手请求头中携带。一次调用只带一种凭证。` + "`auth_type`" + ` 一次只开一种。
+` + "`jwt`" + ` 时，` + "`key_`" + ` 前缀单独校验 API key（sha256 查库、对上用户、未吊销，不是 JWT 校验），其余校验自签 JWT 与未撤销 session；两边通过后才加载同一个 DB 用户。身份是 UserID，` + "`api_key_id`" + ` 只是 key 行句柄。
+` + "`bridge`" + ` 时校验外部 IdP 令牌（本地公钥验签），身份是 claims，没有本地用户行；不接受本地 API key，也没有拿外部系统的 api key 在本地当凭证的入口。
+JSON-RPC、WebSocket、gRPC 也可显式使用兼容字段 ` + "`arguments.jwt_token`" + `（优先于头，门禁验证后移除，业务方法不可见；字段名不表示 API key 走 JWT 校验）。
+浏览器原生 WebSocket 无法自行设置 Authorization 头，使用该兼容字段。
+MCP 凭证使用 HTTP 头，` + "`tools/list`" + ` 只暴露业务入参，不含 ` + "`jwt_token`" + `。
 
 **方法节怎么读**：每个方法节给出方法语义、` + "`arguments`" + ` **传参举例**（必填字段的
 实际请求形态，占位值按真实值替换）与 ` + "`arguments`" + ` **JSON Schema**（机器可校验的
