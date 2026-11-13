@@ -114,7 +114,7 @@ type SupportedMethod struct {
 }
 ```
 
-`Public` 零值为受保护：`APIExecuter` 在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证凭证。凭证来源两处：协议 Adapter 从本协议的 HTTP `Authorization: Bearer` 头（gRPC 为 `authorization` metadata）取值经 `api_auth_session.WithBearerToken` 写入 context；或调用方显式放在 `arguments.jwt_token`（优先）。验证后 `jwt_token` 从 `arguments` 移除，身份经 context 下传。MCP Adapter 对外描述工具时用 `InputSchemaWithoutGateToken()` 去掉 `jwt_token`，凭证只走标准 HTTP 头。
+`Public` 零值为受保护：`APIExecuter` 在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证凭证。凭证来源两处：协议 Adapter 从本协议的 HTTP `Authorization: Bearer` 头（gRPC 为 `authorization` metadata）取值经 `api_auth_session.WithBearerToken` 写入 context；或调用方显式放在 `arguments.jwt_token`（优先）。jwt 类型按前缀分流：`key_` 是用户级 API key，其余是自签 JWT。验证后 `jwt_token` 从 `arguments` 移除，身份经 context 下传。MCP Adapter 对外描述工具时用 `InputSchemaWithoutGateToken()` 去掉 `jwt_token`，凭证只走标准 HTTP 头。
 
 `InputSchema` 只用于 MCP `tools/list` 描述 `arguments`，不是 Ability 的业务执行参数。
 

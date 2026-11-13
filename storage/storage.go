@@ -195,6 +195,7 @@ func GormAutoMigrate() error {
 			&ability_user_model.User{},
 			&api_auth_model.AuthVerifyCode{},
 			&api_auth_model.AuthSession{},
+			&api_auth_model.AuthAPIKey{},
 			&ability_task_model.AsyncTask{},
 		); err != nil {
 			return err

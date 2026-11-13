@@ -15,6 +15,10 @@
     - [3.8. auth.logout](#38-authlogout)
     - [3.9. auth.jwt_token.check](#39-authjwt_tokencheck)
     - [3.10. auth.jwt_token.refresh](#310-authjwt_tokenrefresh)
+    - [3.11. auth.api_key.issue](#311-authapi_keyissue)
+    - [3.12. auth.api_key.list](#312-authapi_keylist)
+    - [3.13. auth.api_key.revoke](#313-authapi_keyrevoke)
+    - [3.14. auth.api_key.delete](#314-authapi_keydelete)
 - [4. 数据与并发纪律](#4-数据与并发纪律)
 - [5. 验收边界](#5-验收边界)
 - [6. 实现进度](#6-实现进度)
@@ -23,7 +27,7 @@
 
 # 1. Auth 域定位与边界
 
-Auth 是 **API 准入域**：实现整体位于 `api/api_auth`（不在 `ability` 树内），涵盖通信之后的权限准入——验证码、注册、登录、session/JWT 与统一准入门禁；`ability` 只承载业务功能实现。文件名沿用 `ability_auth.md` 以保持链接稳定。
+Auth 是 **API 准入域**：实现整体位于 `api/api_auth`（不在 `ability` 树内），涵盖通信之后的权限准入——验证码、注册、登录、session/JWT、用户级 API key 与统一准入门禁；`ability` 只承载业务功能实现。文件名沿用 `ability_auth.md` 以保持链接稳定。
 
 预期目的：提供真实可用、可失效、可审计且不泄露敏感身份信息的验证码、登录和 token 链路。Auth 负责认证编排；User 数据、密码变更和手机号绑定属于 User 域。
 
@@ -53,6 +57,8 @@ flowchart LR
     Session --> Refresh["jwt_token.refresh：轮换 refresh token，签发新 JWT"]
     Refresh --> Session
     Session --> Logout["logout：撤销 session，原 token 即时失效"]
+    Session --> Issue["auth.api_key.issue：签发 key_ 前缀的 API key（只存哈希）"]
+    Issue --> Gate["门禁：Authorization: Bearer key_… 按哈希查 key，吊销即拒"]
 ```
 
 # 3. 方法契约
@@ -131,7 +137,7 @@ flowchart LR
 
 ## 3.8. auth.logout
 
-撤销当前登录状态。wire 必传 `jwt_token`（门禁验证并消费），撤销 context 身份对应 session；业务参数为空。
+撤销当前登录状态：门禁验证凭证（`Authorization: Bearer` 或 `arguments.jwt_token`）后撤销 context 身份对应 session；业务参数为空。凭证为 API key 时无 session 可撤，返回 `API_PERMISSION_DENIED`，吊销 key 走 `auth.api_key.revoke`。
 
 ```json
 {}
@@ -139,7 +145,7 @@ flowchart LR
 
 ## 3.9. auth.jwt_token.check
 
-检查 JWT token 并返回当前身份。wire 必传 `jwt_token`（门禁验证并消费）；业务参数为空。
+检查当前凭证（JWT 或 API key）并返回调用方身份：`user`、`auth_source`（`session` / `api_key`）。JWT 另带 `session_expires_at`；API key 另带 `api_key_id`。业务参数为空。
 
 ```json
 {}
@@ -155,11 +161,43 @@ flowchart LR
 
 - refresh token 只保存哈希；轮换和 logout 必须使用数据库事务或原子更新。
 
+## 3.11. auth.api_key.issue
+
+签发当前用户的一把 API key（`key_` 前缀，明文只返回一次；库中仅存 sha256）。宿主以 `Authorization: Bearer <api_key>` 携带，也可放在 `arguments.jwt_token`（优先于头）。只有登录 session 可签发，API key 自身不能再签发。
+
+```json
+{ "name": "workstation" }
+```
+
+## 3.12. auth.api_key.list
+
+列出当前用户的 API key 记录（名称、前缀、创建 / 最近使用 / 吊销时间），不含明文与哈希。session 与 API key 调用者均可读自己的记录。
+
+```json
+{}
+```
+
+## 3.13. auth.api_key.revoke
+
+吊销一把 API key，吊销后门禁立即拒绝。只有登录 session 可吊销，且只能吊销自己的 key。
+
+```json
+{ "api_key_id": "6c74e413-e081-4a71-b5f9-906f84b5c54d" }
+```
+
+## 3.14. auth.api_key.delete
+
+删除一把已吊销的 API key（GORM 逻辑删除）。未吊销的拒绝删除。只有登录 session 可删自己的 key。
+
+```json
+{ "api_key_id": "6c74e413-e081-4a71-b5f9-906f84b5c54d" }
+```
+
 # 4. 数据与并发纪律
 
 - 验证码不得明文落库、写日志或进入响应（唯一例外：Debug 运行模式可写 Debug 日志供本地联调，Release/Test 禁止），必须具备 TTL、尝试次数、发送间隔、小时发送上限和消费状态。
 - JWT 必须固定签名算法、issuer、audience、有效期和 token 类型。
-- 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权——入口按 `auth_cfg.auth_type` 分发类型（缺省与当前唯一支持值均为 `jwt`；非法值 fail-closed 拒绝全部受保护方法），凭证取值顺序：显式 `arguments.jwt_token` 优先，否则用协议 Adapter 经 `WithBearerToken` 写入 context 的 `Authorization: Bearer` 头值；无论开关状态 `jwt_token` 均从 arguments 移除，身份经 context 下传；`jwt_token` 入参 schema 由方法注册表按非 Public 恒定注入为**可选项**（不随开关变化），业务注册禁止声明，MCP 对外 schema 不含它。
+- 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权——入口按 `auth_cfg.auth_type` 分发类型（缺省 `jwt`，`bridge` 见 5.1；非法值 fail-closed 拒绝全部受保护方法）。凭证取值顺序：显式 `arguments.jwt_token` 优先，否则用协议 Adapter 经 `WithBearerToken` 写入 context 的 `Authorization: Bearer` 头值。jwt 类型按前缀分流：`key_` 只查哈希并拒已吊销，其余验签并确认 session 有效；两条由同一处查用户，不存在则拒绝，再写入同一份身份。API key 在查到用户后节流回写 `last_used_at`。无论开关状态 `jwt_token` 均从 arguments 移除，身份经 context 下传；业务可读 `AuthenticatedUser(ctx)`，需要区分 session 与 API key 时用 `AuthenticatedCaller(ctx)`。`jwt_token` 入参 schema 由方法注册表按非 Public 恒定注入为**可选项**（不随开关变化），业务注册禁止声明，MCP 对外 schema 不含它。
 - 门禁开关 `auth_cfg.enabled`：缺省启用（段/键缺席均按启用处理，fail-closed 取向）；显式 `enabled: false` 时门禁放行且**不提供身份**——依赖 `AuthenticatedUser(ctx)` 的方法照常返回权限错误（不造匿名/系统假身份），适用无用户体系的部署形态。
 - Auth 配置校验纪律同样覆盖 `auth_cfg.auth_type`（仅认 `jwt`，非法值 warning + 全部受保护方法拒绝）。
 - `storage` 包是唯一存储入口。查询和写入使用 `GormDB(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `GormAutoMigrate` 同步，不得经另一连接池、原始 DDL、数据库 CLI 或外部脚本修改。
@@ -214,6 +252,7 @@ flowchart LR
 - [ ] 🟡 DONE — 邮箱验证码 `send/check` 和注册消费语义已实现。
 - [ ] 🟡 DONE — `auth.login.email`、`auth.login.phone` 登录语义已实现（login.phone 待手机号绑定实现后验收）。
 - [ ] 🟡 DONE — `auth.jwt_token.check/refresh` 与 `auth.logout` 已接入。
+- [ ] 🟡 DONE — 用户级 API key：`auth.api_key.issue/list/revoke/delete`；门禁对 `Authorization: Bearer` 与 `arguments.jwt_token` 按 `key_` 前缀分流，库中只存 sha256，吊销或删除后立即拒绝。
 - [ ] 🟡 DONE — Auth 业务失败已复用 API 通用错误码，并完成四协议 `CallToolResult` 验证。
 - [ ] 🟡 DONE — 可选绑定手机号字段为 `users.bind_phone`。
 - [ ] 🟡 DONE — 使用有效 Resend 配置完成真实邮箱主流程验收。

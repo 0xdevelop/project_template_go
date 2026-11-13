@@ -242,8 +242,8 @@ const unifiedCallBody = `
 ` + "`{\"error_code\":...,\"error_msg\":\"...\"}`" + `。
 
 **凭证怎么带**：除 Public 方法（` + "`test`" + `、验证码、注册、登录、refresh）外，每个方法都经统一
-准入门禁。四种协议统一以 HTTP ` + "`Authorization: Bearer <jwt_token>`" + ` 头（gRPC 为 ` + "`authorization`" + `
-metadata）携带凭证；也可显式放在 ` + "`arguments.jwt_token`" + `（优先于头，门禁验证后移除，业务方法不可见）。
+准入门禁。四种协议统一以 HTTP ` + "`Authorization: Bearer <jwt 或 API key>`" + ` 头（gRPC 为 ` + "`authorization`" + `
+metadata）携带凭证，` + "`key_`" + ` 前缀是用户级 API key，其余是自签 JWT；也可显式放在 ` + "`arguments.jwt_token`" + `（优先于头，门禁验证后移除，业务方法不可见）。
 MCP ` + "`tools/list`" + ` 只暴露业务入参，不含 ` + "`jwt_token`" + `。
 
 **方法节怎么读**：每个方法节给出方法语义、` + "`arguments`" + ` **传参举例**（必填字段的

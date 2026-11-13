@@ -1,4 +1,4 @@
-> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.15，共 15 个方法），禁止手改；新增方法后重新执行生成。
+> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.15，共 19 个方法），禁止手改；新增方法后重新执行生成。
 
 # 1. 统一调用方式
 
@@ -27,8 +27,8 @@
 `{"error_code":...,"error_msg":"..."}`。
 
 **凭证怎么带**：除 Public 方法（`test`、验证码、注册、登录、refresh）外，每个方法都经统一
-准入门禁。四种协议统一以 HTTP `Authorization: Bearer <jwt_token>` 头（gRPC 为 `authorization`
-metadata）携带凭证；也可显式放在 `arguments.jwt_token`（优先于头，门禁验证后移除，业务方法不可见）。
+准入门禁。四种协议统一以 HTTP `Authorization: Bearer <jwt 或 API key>` 头（gRPC 为 `authorization`
+metadata）携带凭证，`key_` 前缀是用户级 API key，其余是自签 JWT；也可显式放在 `arguments.jwt_token`（优先于头，门禁验证后移除，业务方法不可见）。
 MCP `tools/list` 只暴露业务入参，不含 `jwt_token`。
 
 **方法节怎么读**：每个方法节给出方法语义、`arguments` **传参举例**（必填字段的
@@ -431,6 +431,154 @@ MCP `tools/list` 只暴露业务入参，不含 `jwt_token`。
   },
   "required": [
     "refresh_token"
+  ],
+  "type": "object"
+}
+```
+
+## 4.11. auth.api_key.issue
+
+签发当前用户的 API key，明文只返回一次；仅登录 session 可签发，key 不能再签发。
+
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "name": "<name>"
+}
+```
+
+可选字段：`jwt_token`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 64,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}
+```
+
+## 4.12. auth.api_key.list
+
+列出当前用户的 API key，不含明文与哈希。
+
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{}
+```
+
+可选字段：`jwt_token`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+## 4.13. auth.api_key.revoke
+
+吊销一把 API key；仅登录 session 可吊销，且只能吊销自己的 key。
+
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "api_key_id": "<api_key_id>"
+}
+```
+
+可选字段：`jwt_token`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "api_key_id": {
+      "format": "uuid",
+      "maxLength": 36,
+      "minLength": 36,
+      "type": "string"
+    },
+    "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "api_key_id"
+  ],
+  "type": "object"
+}
+```
+
+## 4.14. auth.api_key.delete
+
+删除一把已吊销的 API key；未吊销拒绝删除。仅登录 session 可删自己的 key。
+
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "api_key_id": "<api_key_id>"
+}
+```
+
+可选字段：`jwt_token`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "api_key_id": {
+      "format": "uuid",
+      "maxLength": 36,
+      "minLength": 36,
+      "type": "string"
+    },
+    "jwt_token": {
+      "description": "门禁凭证（JWT 或 API key）。请求已带 HTTP Authorization: Bearer 头时省略；显式传入则优先于头。",
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "api_key_id"
   ],
   "type": "object"
 }
