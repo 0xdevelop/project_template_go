@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Usage:
-#   bash new_project.sh <module_path>
-#   wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/new_project.sh | bash -s -- <module_path>
+#   bash new_project.sh [module_path] <api_key_prefix>
+#   wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/new_project.sh | bash -s -- [module_path] <api_key_prefix>
 #
 # Run from inside your project directory (already cloned or freshly created).
+# api_key_prefix 必填，只含小写字母数字与下划线且以 _ 结尾（如 xjbk_），只替换实例凭证前缀。
 #
 # Examples:
-#   bash -s -- github.com/myorg/my_service
-#   bash -s -- mycompany.com/backend
-#   bash -s -- gitlab.com/team/api
+#   bash -s -- github.com/myorg/my_service svc_
+#   bash -s -- mycompany.com/backend svc_
+#   bash -s -- gitlab.com/team/api svc_
 
 set -euo pipefail
 
@@ -17,13 +18,14 @@ TEMPLATE_MODULE="github.com/0xdevelop/project_template_go"
 TEMPLATE_NAME="project_template_go"
 
 usage() {
-    echo "Usage: bash new_project.sh [module_path]"
+    echo "Usage: bash new_project.sh [module_path] <api_key_prefix>"
     echo ""
-    echo "  module_path   Go module path (optional if go.mod already exists)"
-    echo "                e.g. my_project"
-    echo "                     github.com/myorg/my_service"
+    echo "  module_path      Go module path (optional if go.mod already exists)"
+    echo "                   e.g. my_project"
+    echo "                        github.com/myorg/my_service"
+    echo "  api_key_prefix   实例 API key 前缀，必填，小写字母数字与下划线且以 _ 结尾，例如 xjbk_"
     echo ""
-    echo "  If go.mod exists in the current directory, module_path is auto-detected."
+    echo "  If go.mod exists, module_path is auto-detected and only api_key_prefix is passed."
     exit 1
 }
 
@@ -34,12 +36,24 @@ if [[ -f "go.mod" ]]; then
         exit 1
     fi
     echo "Detected module from go.mod: ${NEW_MODULE}"
-elif [[ $# -ge 1 ]]; then
+    if [[ $# -ne 1 ]]; then
+        echo "Error: api_key_prefix is required."
+        echo ""
+        usage
+    fi
+    API_KEY_PREFIX="$1"
+elif [[ $# -eq 2 ]]; then
     NEW_MODULE="$1"
+    API_KEY_PREFIX="$2"
 else
-    echo "Error: no go.mod found and no module_path provided."
+    echo "Error: no go.mod found; module_path and api_key_prefix are required."
     echo ""
     usage
+fi
+
+if [[ ! "${API_KEY_PREFIX}" =~ ^[a-z0-9_]+_$ ]]; then
+    echo "Error: api_key_prefix must match ^[a-z0-9_]+_$ (e.g. xjbk_)."
+    exit 1
 fi
 
 
@@ -52,6 +66,7 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 echo "Template : ${TEMPLATE_MODULE}"
 echo "New      : ${NEW_MODULE}"
+echo "Prefix   : ${API_KEY_PREFIX}"
 echo "Target   : ${TARGET_DIR}"
 echo ""
 
@@ -126,6 +141,52 @@ done < <(find "${SCAFFOLD}/example_files" -type f -print0)
 # ── Clear template changelog entries ─────────────────────────────────────────
 if [[ -d "${SCAFFOLD}/changelog" ]]; then
     rm -f "${SCAFFOLD}/changelog"/*.md
+fi
+
+# ── Replace the credential prefix token only ─────────────────────────────────
+# 只换独立的 key_ 凭证前缀。api_key、key_hash、key_prefix、jwt 与邮件配置不动。
+echo "Replacing API key credential prefix..."
+SESSION_GO="${SCAFFOLD}/api/api_auth/api_auth_session/session.go"
+if [[ ! -f "${SESSION_GO}" ]]; then
+    echo "Error: session.go not found; API key prefix was not applied."
+    exit 1
+fi
+
+while IFS= read -r -d '' file; do
+    grep -qI '' "${file}" 2>/dev/null || continue
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' -E \
+            "s#(^|[^A-Za-z0-9_])key_([^A-Za-z0-9_]|$)#\\1${API_KEY_PREFIX}\\2#g" \
+            "${file}"
+    else
+        sed -i -E \
+            "s#(^|[^A-Za-z0-9_])key_([^A-Za-z0-9_]|$)#\\1${API_KEY_PREFIX}\\2#g" \
+            "${file}"
+    fi
+done < <(find "${SCAFFOLD}" -type f \
+    ! -path "*/.git/*" \
+    ! -name "*.pb.go" \
+    -print0)
+
+if ! grep -F -q "const APIKeyPrefix = \"${API_KEY_PREFIX}\"" "${SESSION_GO}"; then
+    echo "Error: failed to replace APIKeyPrefix in session.go."
+    exit 1
+fi
+
+if [[ "${API_KEY_PREFIX}" != "key_" ]]; then
+    set +e
+    leftover="$(grep -r --exclude='*.pb.go' --exclude-dir='.git' -E -n -I '(^|[^A-Za-z0-9_])key_([^A-Za-z0-9_]|$)' "${SCAFFOLD}" 2>&1)"
+    leftover_status=$?
+    set -e
+    if [[ "${leftover_status}" -eq 0 ]]; then
+        echo "Error: API key prefix replace left credential token key_."
+        echo "${leftover}"
+        exit 1
+    elif [[ "${leftover_status}" -ne 1 ]]; then
+        echo "Error: failed to scan for leftover API key prefix."
+        echo "${leftover}"
+        exit 1
+    fi
 fi
 
 # ── Copy to target and clean up ──────────────────────────────────────────────

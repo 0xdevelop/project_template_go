@@ -90,7 +90,7 @@ func TestAPIKeyLifecycleThroughTheGate(t *testing.T) {
 		t.Fatalf("token_type = %v", issued.(map[string]interface{})["token_type"])
 	}
 	record := issued.(map[string]interface{})["record"].(*APIKeyRecord)
-	if plaintext[:4] != api_auth_session.APIKeyPrefix || record.UserID != user.UserID || record.KeyPrefix == "" {
+	if !strings.HasPrefix(plaintext, api_auth_session.APIKeyPrefix) || record.UserID != user.UserID || record.KeyPrefix == "" {
 		t.Fatalf("unexpected issue result: %q %+v", plaintext, record)
 	}
 
