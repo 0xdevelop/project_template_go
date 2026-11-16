@@ -57,6 +57,9 @@ frontend_cfg: # 前端页面服务配置
 policy_cfg: # Policy scheduling configurations
   policy_duration: "10s" # 定期轮询事项执行完一次到下一次的间隔，Go duration 字符串
   workers_scaller: 5 # 最大异步并发 = CPU 数量 × 倍率
+  task_lifecycle_timeout_seconds: 0 # 任务整体生命周期超时（秒），从 Accept/created_at 起算；0 表示关闭，不设默认三天
+  task_execute_retry_limit_enabled: false # 是否启用执行重试次数限制；必须是 true/false，不用 0/1 代替
+  task_execute_retry_limit_count: 0 # 首次执行之外允许的重试次数；0 表示不重试，不是无限。仅在上一开关为 true 时生效
 auth_cfg: # Auth configurations
   enabled: true # 统一准入门禁开关；缺省 true；false=门禁放行不提供身份，依赖身份的方法不可用
   auth_type: "jwt" # 鉴权类型；缺省与当前唯一支持值均为 jwt

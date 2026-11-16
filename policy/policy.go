@@ -31,10 +31,13 @@ func PolicyServicesStart() func() {
 
 		gtbox_log.LogInfof("policy maintenance loop started")
 		for ctx.Err() == nil {
-			if _, err := storage.MysqlDB(ctx); err == nil {
+			if _, err := storage.GormDB(ctx); err == nil {
 				dispatchQueuedTasks(ctx, &pending)
 
 				runOnceAsync(&requeueRunning, &pending, func() {
+					if err := ability_task.ExpireTimedOutTasks(ctx); err != nil {
+						gtbox_log.LogErrorf("policy maintenance [async_task_timeout] failed: %v", err)
+					}
 					if err := ability_task.RequeueOrphanedTasks(ctx); err != nil {
 						gtbox_log.LogErrorf("policy maintenance [async_task_requeue] failed: %v", err)
 					}

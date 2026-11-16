@@ -17,7 +17,7 @@
 - 禁止引入 `Invocation`、同构请求包装、Method Handler 中间层、第二套执行器、返回分发器或跨协议广播。
 - `arguments` 直接承载业务载荷，也是唯一可选编解码边界，不再增加额外载荷包装。具体算法、密钥来源及非标准编码不属于 API 编排契约；如启用编解码，只能转换 `arguments`，不得改变方法名、请求 ID、错误字段或协议外壳。
 - `test` 固定由 `ability` 父包最先加载。新增业务方法原则上只增加对应 Ability 子包内的方法描述、实际函数和直属父包加载调用，不得修改既有通信协议实现或 `APIExecuter`。唯一例外是 `SupportedMethod.Async` 受理语义的一次性接入：`Async` 标识只允许由 `APIExecuter` 读取并统一受理（事务写任务记录、返回 `task_id`、交给 Worker 调用同一个 `Execute`）；`Execute` 保持纯业务工作函数，各异步方法不得自写受理。
-- `SupportedMethod.Async` 只由后端注册设置，不属于调用参数。默认同步；异步方法必须以 MySQL 持久任务记录为真相源，返回 `task_id` 前完成事务写入，并由 Worker 后续调用同一注册项的 `Execute`。不得使用请求 goroutine、内存 channel 或连接存活状态冒充可恢复任务。
+- `SupportedMethod.Async` 只由后端注册设置，不属于调用参数。默认同步；异步方法必须以主关系库持久任务记录为真相源，返回 `task_id` 前完成写入，并由 Worker 后续调用同一注册项的 `Execute`。不得使用请求 goroutine、内存 channel 或连接存活状态冒充可恢复任务。
 
 ## MCP 协议基线
 
@@ -54,7 +54,7 @@
 
 PostgreSQL 走 gtbox `gtbox_orm_postgres`：`New`、`PostgresDB`、`Close`。驱动在 SDK 里，模板不自己拼 DSN。MySQL、SQLite、Redis 同样把 SDK 配置原样交给 `New`。项目配置只加 `enabled`；Redis 再加 `database` 和 `prefix`。`dbaddress`、`path`、`password`、`db_index`、`sslmode` 以及根上的 `mysql_cfg` 在 `config.LoadConfig` 里映射到 SDK 字段。Redis 读写用已有的 `Set`、`HSet`。
 
-2026-11-03 本会话用户追加：「是否设置个 paramary 主库字段？互斥只能有一个主库？」配置增加 `storage_cfg.primary` 单字段，取值为已启用的 `mysql` / `sqlite` / `postgresql`。单关系库可省略，多关系库必须显式指定；这条补充前述多库选库规则：`GormDB(ctx)` 返回主库，具名句柄用于指定引擎。Auth/User 使用主库，Task 仍按现有契约固定使用 MySQL。
+2026-11-03 本会话用户追加：「是否设置个 paramary 主库字段？互斥只能有一个主库？」配置增加 `storage_cfg.primary` 单字段，取值为已启用的 `mysql` / `sqlite` / `postgresql`。单关系库可省略，多关系库必须显式指定；这条补充前述多库选库规则：`GormDB(ctx)` 返回主库，具名句柄用于指定引擎。Auth/User 与 Task 都使用主库（`GormDB(ctx)`）。Task 不再固定要求 MySQL；SQLite 认领走原子 `UPDATE ... RETURNING`，MySQL/PostgreSQL 仍用 `SKIP LOCKED`。
 
 2026-11-03 本会话用户明确边界：「storage 是程序本身用的，ability 动态处理的那是基于 gtbox_xxx 新建的实体去实例化处理的」「像 gtbo_log 一样默认有全局，也能支持独立创建」。本节唯一入口、禁止业务自建连接等约束限于程序自身的固定存储；Ability 动态处理外部数据源时直接用对应 SDK 的 `New` 创建独立实例，并负责其关闭。独立实例与程序全局实例并存，生命周期互不接管。
 
