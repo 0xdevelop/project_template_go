@@ -42,14 +42,16 @@ Worker 不常驻、不空转：每个 Worker 只原子认领一条 `queued` 任�
 policy_cfg:
   policy_duration: "10s"
   workers_scaller: 5
-  task_lifecycle_timeout_seconds: 0
+  task_lifecycle_timeout_enabled: false
+  task_lifecycle_timeout_seconds: 3600
   task_execute_retry_limit_enabled: false
   task_execute_retry_limit_count: 0
 ```
 
 - `policy_duration`：两轮派发的间隔，缺省或非法时回落 `10s`。
 - `workers_scaller`：CPU 并发倍率，缺省或非法时回落 `1`。例如 2 CPU 配置 `5` 时最多同时执行 10 条异步任务。
-- `task_lifecycle_timeout_seconds`：任务整体生命周期超时（秒），从受理时的 `created_at` 起算。`0`（默认）关闭；正整数才启用。不会把未拍板的期限写成三天并启用。
+- `task_lifecycle_timeout_enabled`：是否启用任务整体生命周期超时，必须显式写 `true`/`false`，默认 `false`。为 `false` 时不论 `task_lifecycle_timeout_seconds` 填什么都不生效，不因耗时终止任务，也不暗含三天或其他默认期限。
+- `task_lifecycle_timeout_seconds`：整体超时时长，整数，单位秒，从受理时写入的 `created_at` 起算。仅在上一开关为 `true` 时生效，此时必须是正整数；填 `0` 或负数时配置加载直接报错，不解释为关闭或无限。示例中的 `3600` 只是示例值，不是默认期限。
 - `task_execute_retry_limit_enabled`：是否启用执行重试次数限制，必须是 `true`/`false`，默认 `false`（不截断历史孤儿恢复）。
 - `task_execute_retry_limit_count`：首次执行之外允许的重试次数，仅在上一开关为 `true` 时生效；`0` 表示不重试，不是无限。
 

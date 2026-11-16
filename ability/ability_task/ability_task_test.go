@@ -169,13 +169,37 @@ func TestDefaultTimeoutDoesNotExpireQueuedTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	if task.RunStatus != RunStatusQueued {
-		t.Fatalf("timeout default 0 must not expire tasks, even after 72h: %+v", task)
+		t.Fatalf("timeout disabled by default must not expire tasks, even after 72h: %+v", task)
+	}
+}
+
+func TestLifecycleTimeoutDisabledIgnoresSeconds(t *testing.T) {
+	db := setupTaskSQLite(t)
+	policy_config.CurrentCfgPolicy = &policy_config.PolicyConfig{TaskLifecycleTimeoutEnabled: false, TaskLifecycleTimeoutSeconds: 2}
+	accepted, err := AcceptAsyncTask(context.Background(), "timeout-disabled", map[string]interface{}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := accepted.(map[string]interface{})["task_id"].(string)
+	if err := db.Model(&ability_task_model.AsyncTask{}).Where("task_id = ?", id).
+		Update("created_at", time.Now().UTC().Add(-time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ExpireTimedOutTasks(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var task ability_task_model.AsyncTask
+	if err := db.Where("task_id = ?", id).Take(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	if task.RunStatus != RunStatusQueued {
+		t.Fatalf("enabled=false must ignore seconds and not expire: %+v", task)
 	}
 }
 
 func TestLifecycleTimeoutExpiresQueuedTaskFromCreatedAt(t *testing.T) {
 	db := setupTaskSQLite(t)
-	policy_config.CurrentCfgPolicy = &policy_config.PolicyConfig{TaskLifecycleTimeoutSeconds: 2}
+	policy_config.CurrentCfgPolicy = &policy_config.PolicyConfig{TaskLifecycleTimeoutEnabled: true, TaskLifecycleTimeoutSeconds: 2}
 	accepted, err := AcceptAsyncTask(context.Background(), "timeout-on", map[string]interface{}{})
 	if err != nil {
 		t.Fatal(err)

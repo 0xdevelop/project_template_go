@@ -98,7 +98,7 @@ project_template_go
 - `APIExecuter` 是唯一执行入口，不维护业务 `switch`；新增业务方法只在 Ability 子包注册并由直属父包加载。
 - 统一准入门禁见上一节「准入凭证三条路」，契约见 [`docs/ability_auth.md`](docs/ability_auth.md)，User 边界见 [`docs/ability_user.md`](docs/ability_user.md)；`ability` 树内零鉴权代码。
 - 业务失败统一 `CallToolResult`（HTTP 200 + `isError=true`）；协议错误只留给外壳损坏与服务故障。
-- 异步任务以主关系库（SQLite / MySQL / PostgreSQL）记录为持久化排队区，Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 填充空闲名额；详见 [`docs/ability_task.md`](docs/ability_task.md)。整体超时与重试次数限制默认关闭。
+- 异步任务以主关系库（SQLite / MySQL / PostgreSQL）记录为持久化排队区，Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 填充空闲名额；详见 [`docs/ability_task.md`](docs/ability_task.md)。整体超时与重试次数限制均由显式开关控制，示例配置写成 `task_lifecycle_timeout_enabled: false`、`task_execute_retry_limit_enabled: false`；开启整体超时时 `task_lifecycle_timeout_seconds` 必须为正整数（秒，从 `created_at` 起算），`0` 或负数会被配置校验拒绝。
 - Policy 单大循环、临时 Worker 释放、同类维护任务防重入与重启续跑契约见 [`docs/ability_policy.md`](docs/ability_policy.md)。
 - `docs/api_methods.md` 由 `./gen_api_docs.sh` 从方法注册表生成；对外文档仅 `GET /docs_api` 单页（服务端注入）。
 - proto 只由 `./gen_proto.sh` 生成；发版走 `./git_tag.sh`（自动刷新方法文档与 changelog）。

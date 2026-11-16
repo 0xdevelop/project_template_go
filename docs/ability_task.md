@@ -117,7 +117,7 @@ stateDiagram-v2
 - **Worker 并发**：由 Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 计算全局上限；每个 Worker 只认领并执行一条任务，完成后 goroutine 自然释放。
 - **排队区**：受理层不设人为的每用户在途数量上限；MySQL 任务记录承载排队，资源故障按正常数据库错误返回。
 - **选库与退出**：Task 全流程使用 `storage.GormDB(ctx)`（主关系库，与 Auth/User 相同）。未初始化主关系库时受理明确报错，Policy 不派发 Task。退出时停止新的派发，等待已认领任务和维护事项结束，再关闭程序固定存储。
-- **整体超时**：`policy_cfg.task_lifecycle_timeout_seconds` 为单位为秒的整数，从 `AcceptAsyncTask` 写入的 `created_at` 起算到当前时刻。`0`（默认）表示关闭，不因耗时终止任务，也不会暗含三天或其他默认期限。正整数启用后，到期的排队任务落 `done + system_error`（`error_message=task lifecycle timed out`）；执行中任务把同一截止时间交给 `Execute` 的 context，到期同样落 `system_error`。不为内部步骤另设短超时。
+- **整体超时**：由显式开关 `policy_cfg.task_lifecycle_timeout_enabled`（`true`/`false`，默认 `false`）控制。为 `false` 时忽略 `task_lifecycle_timeout_seconds`，不因耗时终止任务，也不会暗含三天或其他默认期限。为 `true` 时 `task_lifecycle_timeout_seconds` 必须是正整数（单位秒，从 `AcceptAsyncTask` 写入的 `created_at` 起算到当前时刻），`0` 或负数在配置加载时直接报错。启用后，到期的排队任务落 `done + system_error`（`error_message=task lifecycle timed out`）；执行中任务把同一截止时间交给 `Execute` 的 context，到期同样落 `system_error`。不为内部步骤另设短超时。
 - **不确定写回**：`Execute` 结束后若终态写回失败或崩溃在写回窗口，任务标记 `writeback_pending`，恢复时落 `system_error`（`execution result writeback was incomplete; not rerun`），不得当作孤儿重跑。
 - **客户端断线**：请求连接断开不等于任务失败。任务在受理写入后即独立于调用连接；重连只查询已有 `task_id`，不盲目重新提交。
 - 普通状态查询读已提交快照不加锁；并发状态变更一律条件原子更新或行锁事务。共享瓶颈是全局 DB 连接池（Worker 与请求线程共用），池容量属部署参数。

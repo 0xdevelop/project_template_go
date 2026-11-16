@@ -196,6 +196,9 @@ func LoadConfig(file string) error {
 	if err := GlobalConfig.FrontendCfg.Validate(); err != nil {
 		return err
 	}
+	if err := GlobalConfig.PolicyCfg.Validate(); err != nil {
+		return err
+	}
 	api_auth_config.CurrentCfgAuth = GlobalConfig.AuthCfg
 	policy_config.CurrentCfgPolicy = GlobalConfig.PolicyCfg
 	return nil
@@ -286,8 +289,10 @@ func generateDefaultConfig() *FileConfig {
 			Port:        aport + 2,
 		},
 		PolicyCfg: &policy_config.PolicyConfig{
-			PolicyDuration: "10s",
-			WorkersScaller: 1,
+			PolicyDuration:               "10s",
+			WorkersScaller:               1,
+			TaskLifecycleTimeoutEnabled:  false,
+			TaskExecuteRetryLimitEnabled: false,
 		},
 		AuthCfg: &api_auth_config.AuthConfig{
 			Enabled:  &authGateEnabledDefault,

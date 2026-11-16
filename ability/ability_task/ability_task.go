@@ -238,7 +238,7 @@ func executeClaimedTask(ctx context.Context, task *ability_task_model.AsyncTask)
 	defer unmarkTaskInFlight(task.TaskID)
 	runCtx := context.WithoutCancel(ctx)
 	var cancel context.CancelFunc
-	// 超时关闭（0）时保持原语义：停止信号不中断已认领任务，跑完当前再退。
+	// 超时关闭（task_lifecycle_timeout_enabled=false）时保持原语义：停止信号不中断已认领任务，跑完当前再退。
 	// 仅当整体生命周期超时启用时，才按 created_at 截止，不为内部步骤另设短超时。
 	if timeout := policy_config.CurrentTaskLifecycleTimeout(); timeout > 0 {
 		deadline := task.CreatedAt.UTC().Add(timeout)
@@ -434,7 +434,7 @@ func RequeueOrphanedTasks(ctx context.Context) error {
 }
 
 // ExpireTimedOutTasks 把已超过整体生命周期（从 created_at 起算）的排队任务落 system_error。
-// task_lifecycle_timeout_seconds=0 时为 no-op，不启用任何默认期限。
+// task_lifecycle_timeout_enabled=false 时为 no-op（忽略 seconds），不启用任何默认期限。
 func ExpireTimedOutTasks(ctx context.Context) error {
 	timeout := policy_config.CurrentTaskLifecycleTimeout()
 	if timeout <= 0 {

@@ -49,21 +49,41 @@ func TestTaskReliabilityConfigDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("zero and negative timeout stay off", func(t *testing.T) {
-		CurrentCfgPolicy = &PolicyConfig{TaskLifecycleTimeoutSeconds: 0}
-		if CurrentTaskLifecycleTimeout() != 0 {
-			t.Fatal("0 must mean disabled, not an implicit default deadline")
-		}
-		CurrentCfgPolicy = &PolicyConfig{TaskLifecycleTimeoutSeconds: -1}
-		if CurrentTaskLifecycleTimeout() != 0 {
-			t.Fatal("negative timeout must be treated as disabled, not infinite")
+	t.Run("enabled=false ignores seconds whatever value", func(t *testing.T) {
+		for _, seconds := range []int{-5, 0, 1, 90, 259200} {
+			CurrentCfgPolicy = &PolicyConfig{TaskLifecycleTimeoutEnabled: false, TaskLifecycleTimeoutSeconds: seconds}
+			if err := CurrentCfgPolicy.Validate(); err != nil {
+				t.Fatalf("seconds=%d with enabled=false must pass validation: %v", seconds, err)
+			}
+			if TaskLifecycleTimeoutEnforced() || CurrentTaskLifecycleTimeout() != 0 {
+				t.Fatalf("seconds=%d with enabled=false must not take effect", seconds)
+			}
 		}
 	})
 
-	t.Run("positive timeout is created_at lifecycle in seconds", func(t *testing.T) {
-		CurrentCfgPolicy = &PolicyConfig{TaskLifecycleTimeoutSeconds: 90}
-		if CurrentTaskLifecycleTimeout() != 90*time.Second {
+	t.Run("enabled=true rejects zero and negative seconds", func(t *testing.T) {
+		for _, seconds := range []int{0, -1, -3600} {
+			cfg := &PolicyConfig{TaskLifecycleTimeoutEnabled: true, TaskLifecycleTimeoutSeconds: seconds}
+			if err := cfg.Validate(); err == nil {
+				t.Fatalf("enabled=true seconds=%d must be rejected, not treated as off/unlimited", seconds)
+			}
+		}
+	})
+
+	t.Run("enabled=true positive seconds is created_at lifecycle in seconds", func(t *testing.T) {
+		CurrentCfgPolicy = &PolicyConfig{TaskLifecycleTimeoutEnabled: true, TaskLifecycleTimeoutSeconds: 90}
+		if err := CurrentCfgPolicy.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		if !TaskLifecycleTimeoutEnforced() || CurrentTaskLifecycleTimeout() != 90*time.Second {
 			t.Fatalf("got %s", CurrentTaskLifecycleTimeout())
+		}
+	})
+
+	t.Run("nil policy config validates and stays off", func(t *testing.T) {
+		var cfg *PolicyConfig
+		if err := cfg.Validate(); err != nil {
+			t.Fatal(err)
 		}
 	})
 
