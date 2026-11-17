@@ -5,6 +5,7 @@ package ability_task
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"time"
@@ -82,7 +83,7 @@ func inFlightTaskIDs() []string {
 func LoadAPIMethods() {
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodTaskGet,
-		Description: "查询我的异步任务状态与结果",
+		Description: "查询我的异步任务状态、步进（steps/current_step）与结果",
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
 				"task_id": api_auth_common.StringSchema("", 36, 36),
@@ -129,13 +130,20 @@ func AcceptAsyncTask(ctx context.Context, methodName string, abilityParams inter
 	}
 
 	task := &ability_task_model.AsyncTask{
+		Model:        gorm.Model{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
 		TaskID:       uuid.NewString(),
 		UserID:       userID,
 		Method:       methodName,
 		RunStatus:    RunStatusQueued,
 		InputPayload: string(inputJSON),
 	}
-	if err = db.Create(task).Error; err != nil {
+	// 任务行与引擎 accepted 阶段同事务写入：返回 task_id 时步进起点已持久化。
+	if err = db.Transaction(func(tx *gorm.DB) error {
+		if createErr := tx.Create(task).Error; createErr != nil {
+			return createErr
+		}
+		return appendTaskStep(tx, task.TaskID, 0, EngineStepAccepted, StepKindEngine, RunStatusQueued, "", task.CreatedAt.UTC())
+	}); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{
@@ -146,9 +154,11 @@ func AcceptAsyncTask(ctx context.Context, methodName string, abilityParams inter
 
 // AsyncTaskInfo 是 Worker 注入业务 Execute context 的任务身份快照；
 // 与门禁在线身份（AuthenticatedUser）语义分离：异步执行不要求受理时的 session 仍存活。
+// ExecutionCount 是本次认领后的执行轮次（含首次，从 1 起），步进 API 用它拒绝旧轮次的迟到写入。
 type AsyncTaskInfo struct {
-	TaskID string
-	UserID *string
+	TaskID         string
+	UserID         *string
+	ExecutionCount int
 }
 
 type asyncTaskInfoContextKey struct{}
@@ -190,18 +200,30 @@ func claimQueuedTask(ctx context.Context) (*ability_task_model.AsyncTask, error)
 		"execution_count": gorm.Expr("execution_count + 1"),
 	}
 	if db.Dialector.Name() == "sqlite" {
-		candidate := db.Model(&ability_task_model.AsyncTask{}).Select("id").
-			Where("run_status = ?", RunStatusQueued).Order("id ASC").Limit(1)
-		result := db.Model(task).Clauses(clause.Returning{}).
-			Where("id = (?) AND run_status = ?", candidate, RunStatusQueued).
-			Updates(updates)
-		if result.Error != nil {
-			return nil, result.Error
+		claimed := false
+		err = db.Transaction(func(tx *gorm.DB) error {
+			candidate := tx.Model(&ability_task_model.AsyncTask{}).Select("id").
+				Where("run_status = ?", RunStatusQueued).Order("id ASC").Limit(1)
+			result := tx.Model(task).Clauses(clause.Returning{}).
+				Where("id = (?) AND run_status = ?", candidate, RunStatusQueued).
+				Updates(updates)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return nil
+			}
+			// in-flight 登记先于提交；claimed 阶段与认领同事务，attempt 即 RETURNING 回来的 execution_count
+			markTaskInFlight(task.TaskID)
+			claimed = true
+			return appendTaskStep(tx, task.TaskID, task.ExecutionCount, EngineStepClaimed, StepKindEngine, RunStatusRunning, "", now)
+		})
+		if err != nil || !claimed {
+			if claimed {
+				unmarkTaskInFlight(task.TaskID)
+			}
+			return nil, err
 		}
-		if result.RowsAffected == 0 {
-			return nil, nil
-		}
-		markTaskInFlight(task.TaskID)
 		return task, nil
 	}
 	claimed := false
@@ -219,10 +241,12 @@ func claimQueuedTask(ctx context.Context) (*ability_task_model.AsyncTask, error)
 		if updateErr := tx.Model(task).Updates(updates).Error; updateErr != nil {
 			return updateErr
 		}
+		// gorm.Expr 自增不回填结构体，按同一条 UPDATE 的语义同步内存值
+		task.ExecutionCount++
 		// in-flight 登记必须先于事务提交：DB running 可见时本进程执行记录已存在，孤儿侦测无误判窗口
 		markTaskInFlight(task.TaskID)
 		claimed = true
-		return nil
+		return appendTaskStep(tx, task.TaskID, task.ExecutionCount, EngineStepClaimed, StepKindEngine, RunStatusRunning, "", now)
 	})
 	if err != nil || !claimed {
 		if claimed {
@@ -252,7 +276,7 @@ func executeClaimedTask(ctx context.Context, task *ability_task_model.AsyncTask)
 	taskCtx := context.WithValue(
 		runCtx,
 		asyncTaskInfoContextKey{},
-		&AsyncTaskInfo{TaskID: task.TaskID, UserID: task.UserID},
+		&AsyncTaskInfo{TaskID: task.TaskID, UserID: task.UserID, ExecutionCount: task.ExecutionCount},
 	)
 
 	supportedMethod, ok := api_supported_methods.Method(task.Method)
@@ -332,16 +356,47 @@ func finishTask(ctx context.Context, taskID string, processStatus string, result
 		updates["result_payload"] = resultPayload
 		updates["progress"] = 100.0
 	}
-	result := db.Model(&ability_task_model.AsyncTask{}).
-		Where("task_id = ? AND run_status = ?", taskID, RunStatusRunning).
-		Updates(updates)
-	if result.Error != nil {
-		gtbox_log.LogErrorf("async task finish failed: task_id=%s: %v", taskID, result.Error)
+	// 终态与 finished 阶段同事务：任一失败整体回滚，writeback_pending 保持 true 交由恢复落 system_error。
+	finished := false
+	err = db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&ability_task_model.AsyncTask{}).
+			Where("task_id = ? AND run_status = ?", taskID, RunStatusRunning).
+			Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return nil
+		}
+		finished = true
+		return appendFinishedStep(tx, taskID, errorMessage, now)
+	})
+	if err != nil {
+		gtbox_log.LogErrorf("async task finish failed: task_id=%s: %v", taskID, err)
 		return
 	}
-	if result.RowsAffected != 1 {
+	if !finished {
 		gtbox_log.LogWarnf("async task finish skipped, row not in running state: task_id=%s", taskID)
 	}
+}
+
+// markTaskDoneWithStep 在一个事务里按条件把任务行置 done（updates 由调用方给出）并追加 finished 阶段；
+// 条件未命中返回 false 且不写阶段。finished 阶段 message 等于 updates 里的 error_message（缺省为空串）。
+func markTaskDoneWithStep(db *gorm.DB, taskID string, query string, args []interface{}, updates map[string]interface{}, now time.Time) (bool, error) {
+	errorMessage, _ := updates["error_message"].(string)
+	done := false
+	err := db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&ability_task_model.AsyncTask{}).Where(query, args...).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return nil
+		}
+		done = true
+		return appendFinishedStep(tx, taskID, errorMessage, now)
+	})
+	return done, err
 }
 
 // RequeueOrphanedTasks 侦测未尽之事：把 DB 中 running 但不在本进程 in-flight 执行集合的孤儿任务
@@ -371,15 +426,15 @@ func RequeueOrphanedTasks(ctx context.Context) error {
 	for _, orphan := range orphans {
 		if orphan.WritebackPending {
 			now := time.Now().UTC()
-			if updErr := db.Model(&ability_task_model.AsyncTask{}).
-				Where("task_id = ? AND run_status = ? AND writeback_pending = ?", orphan.TaskID, RunStatusRunning, true).
-				Updates(map[string]interface{}{
+			if _, updErr := markTaskDoneWithStep(db, orphan.TaskID,
+				"task_id = ? AND run_status = ? AND writeback_pending = ?", []interface{}{orphan.TaskID, RunStatusRunning, true},
+				map[string]interface{}{
 					"run_status":        RunStatusDone,
 					"process_status":    ProcessStatusSystemError,
 					"completed_at":      &now,
 					"error_message":     "execution result writeback was incomplete; not rerun",
 					"writeback_pending": false,
-				}).Error; updErr != nil {
+				}, now); updErr != nil {
 				return updErr
 			}
 			gtbox_log.LogWarnf("async task writeback uncertain, not rerun: task_id=%s", orphan.TaskID)
@@ -387,43 +442,56 @@ func RequeueOrphanedTasks(ctx context.Context) error {
 		}
 		if timeout := policy_config.CurrentTaskLifecycleTimeout(); timeout > 0 && !orphan.CreatedAt.UTC().Add(timeout).After(time.Now().UTC()) {
 			now := time.Now().UTC()
-			if updErr := db.Model(&ability_task_model.AsyncTask{}).
-				Where("task_id = ? AND run_status = ?", orphan.TaskID, RunStatusRunning).
-				Updates(map[string]interface{}{
+			if _, updErr := markTaskDoneWithStep(db, orphan.TaskID,
+				"task_id = ? AND run_status = ?", []interface{}{orphan.TaskID, RunStatusRunning},
+				map[string]interface{}{
 					"run_status":     RunStatusDone,
 					"process_status": ProcessStatusSystemError,
 					"completed_at":   &now,
 					"error_message":  "task lifecycle timed out",
-				}).Error; updErr != nil {
+				}, now); updErr != nil {
 				return updErr
 			}
 			continue
 		}
 		if policy_config.TaskExecuteRetryLimitEnforced() && orphan.ExecutionCount > policy_config.CurrentTaskExecuteRetryLimitCount() {
 			now := time.Now().UTC()
-			if updErr := db.Model(&ability_task_model.AsyncTask{}).
-				Where("task_id = ? AND run_status = ?", orphan.TaskID, RunStatusRunning).
-				Updates(map[string]interface{}{
+			if _, updErr := markTaskDoneWithStep(db, orphan.TaskID,
+				"task_id = ? AND run_status = ?", []interface{}{orphan.TaskID, RunStatusRunning},
+				map[string]interface{}{
 					"run_status":     RunStatusDone,
 					"process_status": ProcessStatusSystemError,
 					"completed_at":   &now,
 					"error_message":  "task execute retry limit reached",
-				}).Error; updErr != nil {
+				}, now); updErr != nil {
 				return updErr
 			}
 			gtbox_log.LogWarnf("async task retry limit reached, not rerun: task_id=%s execution_count=%d", orphan.TaskID, orphan.ExecutionCount)
 			continue
 		}
-		result := db.Model(&ability_task_model.AsyncTask{}).
-			Where("task_id = ? AND run_status = ? AND writeback_pending = ?", orphan.TaskID, RunStatusRunning, false).
-			Updates(map[string]interface{}{
-				"run_status": RunStatusQueued,
-				"started_at": nil,
-			})
-		if result.Error != nil {
-			return result.Error
+		// 重排队与 requeued 阶段同事务：旧轮次阶段只被关闭（completed_at），历史不删；attempt 记被孤儿化的轮次。
+		now := time.Now().UTC()
+		requeuedOne := false
+		if txErr := db.Transaction(func(tx *gorm.DB) error {
+			result := tx.Model(&ability_task_model.AsyncTask{}).
+				Where("task_id = ? AND run_status = ? AND writeback_pending = ?", orphan.TaskID, RunStatusRunning, false).
+				Updates(map[string]interface{}{
+					"run_status": RunStatusQueued,
+					"started_at": nil,
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return nil
+			}
+			requeuedOne = true
+			return appendTaskStep(tx, orphan.TaskID, orphan.ExecutionCount, EngineStepRequeued, StepKindEngine, RunStatusQueued,
+				"orphaned running task requeued", now)
+		}); txErr != nil {
+			return txErr
 		}
-		if result.RowsAffected > 0 {
+		if requeuedOne {
 			requeued++
 		}
 	}
@@ -453,15 +521,26 @@ func expireTimedOutQueuedTasks(_ context.Context, db *gorm.DB, timeout time.Dura
 	}
 	now := time.Now().UTC()
 	deadline := now.Add(-timeout)
-	result := db.Model(&ability_task_model.AsyncTask{}).
+	var expiredIDs []string
+	if err := db.Model(&ability_task_model.AsyncTask{}).
 		Where("run_status = ? AND created_at <= ?", RunStatusQueued, deadline).
-		Updates(map[string]interface{}{
-			"run_status":     RunStatusDone,
-			"process_status": ProcessStatusSystemError,
-			"completed_at":   &now,
-			"error_message":  "task lifecycle timed out",
-		})
-	return result.Error
+		Pluck("task_id", &expiredIDs).Error; err != nil {
+		return err
+	}
+	// 逐条条件置终态并追加 finished 阶段；并发下已被认领/取消的行条件不命中，不写阶段。
+	for _, taskID := range expiredIDs {
+		if _, err := markTaskDoneWithStep(db, taskID,
+			"task_id = ? AND run_status = ? AND created_at <= ?", []interface{}{taskID, RunStatusQueued, deadline},
+			map[string]interface{}{
+				"run_status":     RunStatusDone,
+				"process_status": ProcessStatusSystemError,
+				"completed_at":   &now,
+				"error_message":  "task lifecycle timed out",
+			}, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UpdateProgress 供异步业务 Execute 上报量化进度；仅活跃（非 done）任务可更新。
@@ -507,15 +586,49 @@ func TaskGet(ctx context.Context, input interface{}) (interface{}, error) {
 		return nil, err
 	}
 
+	item, err := ownedTaskWithSteps(db, taskID, user.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"task": item}, nil
+}
+
+// ownedTaskWithSteps 读取属主任务及其全部步进：任务行与步进在同一读事务里取，
+// 保证 current_step 与 run_status 是同一快照；非属主或不存在统一 ErrInvalidArguments。
+// steps 恒为数组（无记录为 []）；current_step 为 step_seq 最大的阶段，无记录为 null。
+func ownedTaskWithSteps(db *gorm.DB, taskID string, userID string) (map[string]interface{}, error) {
 	task := &ability_task_model.AsyncTask{}
-	findErr := db.Where("task_id = ? AND user_id = ?", taskID, user.UserID).Take(task).Error
-	if errors.Is(findErr, gorm.ErrRecordNotFound) {
+	var steps []map[string]interface{}
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		if findErr := tx.Where("task_id = ? AND user_id = ?", taskID, userID).Take(task).Error; findErr != nil {
+			return findErr
+		}
+		var stepErr error
+		steps, stepErr = loadTaskSteps(tx, taskID)
+		return stepErr
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if errors.Is(txErr, gorm.ErrRecordNotFound) {
 		return nil, api_error_code.ErrInvalidArguments
 	}
-	if findErr != nil {
-		return nil, findErr
+	if txErr != nil {
+		return nil, txErr
 	}
-	return map[string]interface{}{"task": taskResult(task, true)}, nil
+	item := taskResult(task, true)
+	item["steps"] = steps
+	item["execution_count"] = task.ExecutionCount
+	item["current_business_step"] = nil
+	for i := len(steps) - 1; i >= 0; i-- {
+		if steps[i]["step_kind"] == StepKindBusiness && steps[i]["attempt"] == task.ExecutionCount {
+			item["current_business_step"] = steps[i]
+			break
+		}
+	}
+	if len(steps) > 0 {
+		item["current_step"] = steps[len(steps)-1]
+	} else {
+		item["current_step"] = nil
+	}
+	return item, nil
 }
 
 func TaskList(ctx context.Context, input interface{}) (interface{}, error) {
@@ -566,17 +679,17 @@ func TaskCancel(ctx context.Context, input interface{}) (interface{}, error) {
 	}
 
 	now := time.Now().UTC()
-	result := db.Model(&ability_task_model.AsyncTask{}).
-		Where("task_id = ? AND user_id = ? AND run_status = ?", taskID, user.UserID, RunStatusQueued).
-		Updates(map[string]interface{}{
+	cancelled, cancelErr := markTaskDoneWithStep(db, taskID,
+		"task_id = ? AND user_id = ? AND run_status = ?", []interface{}{taskID, user.UserID, RunStatusQueued},
+		map[string]interface{}{
 			"run_status":     RunStatusDone,
 			"process_status": ProcessStatusCancelled,
 			"completed_at":   &now,
-		})
-	if result.Error != nil {
-		return nil, result.Error
+		}, now)
+	if cancelErr != nil {
+		return nil, cancelErr
 	}
-	if result.RowsAffected != 1 {
+	if !cancelled {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	return map[string]interface{}{"cancelled": true, "task_id": taskID}, nil

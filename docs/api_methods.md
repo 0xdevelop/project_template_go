@@ -634,7 +634,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 6.1. task.get
 
-查询我的异步任务状态与结果
+查询我的异步任务状态、步进（steps/current_step）与结果
 
 `arguments` 传参举例（仅含必填字段）：
 

@@ -9,6 +9,7 @@
     - [3.2. task.list](#32-tasklist)
     - [3.3. task.cancel](#33-taskcancel)
 - [4. 数据与并发纪律](#4-数据与并发纪律)
+    - [4.1. 引擎记录与业务步进（只读回看）](#41-引擎记录与业务步进只读回看)
 - [5. 验收边界](#5-验收边界)
 - [6. 实现进度](#6-实现进度)
 
@@ -127,6 +128,40 @@ stateDiagram-v2
 - **单实例边界**：不做分布式认领/租约；多实例部署是将来的独立命题。
 - **载荷**：`input_payload`/`result_payload` 明文 JSON 存储；**敏感值（密码、token、密钥等）不得进入异步方法的 arguments 与结果**（门禁参数 `jwt_token` 已在受理前被 APIExecuter 移除）。持久化加密待真实敏感任务出现时另立契约。
 
+## 4.1. 引擎记录与业务步进（只读回看）
+
+两层职责分开：**程序级仅是通用引擎行为**，用于调度与诊断；**业务级由具体业务定义**，用于业务展示。模板无任何模型、CLI 或领域阶段。阶段记录使用独立 `AsyncTaskStep` 表，`AutoMigrate` 增表兼容旧库，不回填、不编造旧历史。
+
+沿用 `task.get`，不另造查询协议/修改入口：已有属主校验与同一调用链可复用。它在一个只读、可重复读事务中返回任务及全部 `steps`，运行中亦可读；`task.list` 保持原有轻量摘要，不带步骤。外部没有修改/删步骤或手动重跑方法。请求断线不改任务；查询不写库。
+
+| 字段 | 类型/默认 | 值域与语义 |
+|---|---|---|
+| `task.steps` | 对象数组，默认 `[]` | 全部已持久化阶段，按 `step_seq` 升序；业务页按 `step_kind=business` 展示业务步进，`engine` 另作诊断时间线，不能混称业务阶段 |
+| `task.current_step` | 步骤对象或 `null` | 服务端返回 `step_seq` 最大的一条（含终态 finished）；无历史为 `null` |
+| `task.current_business_step` | 步骤对象或 `null` | 当前 `execution_count` 轮次最后一条业务步骤；可能已关闭，须结合 completed_at 展示；新轮次未上报、仅排队或旧库无记录时为 `null`，不沿用上轮业务步骤冒充当前 |
+| `task.execution_count` | 整数，默认 `0` | 已认领次数，首次认领后为 1；不因重排队清零 |
+| `steps[].step_seq` | 正整数 | 任务内从 1 连续递增，跨轮次不清零；与 task_id 组成唯一索引 |
+| `steps[].attempt` | 非负整数 | 写入时的 execution_count；accepted=0，claimed=新轮次，requeued=被恢复的旧轮次，finished=当前轮次 |
+| `steps[].step` | 字符串 | engine 值：`accepted`（受理排队）、`claimed`（认领）、`requeued`（孤儿重排）、`finished`（终态）；business 值由业务为方法注册 |
+| `steps[].step_kind` | 字符串枚举 | `engine` / `business`；来源不同，不混成业务阶段 |
+| `steps[].run_status` | 字符串枚举 | `queued` / `running` / `done`，只由 Go 引擎赋值：accepted/requeued=queued、claimed/business=running、finished=done。是阶段开启时所在程序态，不是业务成败；历史不改写，阶段关闭由 completed_at 表示 |
+| `steps[].business_statuses` | 字符串枚举数组，默认 `[]`，永不为 null | 业务实际已上报的状态，按首次上报顺序去重；不是全部允许值，也不是引擎推断的结果；engine 阶段恒 `[]`。空数组仅表示尚无业务状态，不暗示成功/失败/禁用 |
+| `steps[].message` | 字符串，默认 `""` | 业务上报或引擎说明；最长 512 UTF-8 字节，超长按字符边界截断；重复状态上报仍覆盖消息（空串显式清空） |
+| `steps[].started_at` | UTC RFC3339Nano 字符串 | 服务端开启阶段时间 |
+| `steps[].updated_at` | UTC RFC3339Nano 字符串 | 服务端最近业务上报或关闭阶段时间 |
+| `steps[].completed_at` | UTC RFC3339Nano 字符串或 null | null=阶段开放；新阶段开启时前阶段关闭，finished 开启即关闭（started_at=completed_at）。关闭不自行推断业务成功 |
+
+业务子包在自身 `LoadAPIMethods` 为方法调用 `RegisterBusinessSteps(method, BusinessStepSpec{Step: "prepare", BusinessStatuses: []string{"checked"}}...)`。阶段名与业务状态都须匹配 `^[a-z][a-z0-9_]{0,63}$`，每阶段允许状态数 0–32；允许值不随请求输入改变。空集合表示该阶段不接受任何业务状态。阶段不能复用引擎保留名。空方法/空阶段集合、非法名、重复阶段/状态、不同定义重复注册均启动 panic；相同定义重复注册幂等。模板只提供承载、注册与校验，不定义具体业务的状态枚举。
+
+业务 `Execute` 使用 `BeginStep(ctx, step, message)` 开始真实发生的阶段，`ReportStepBusinessStatus(ctx, status, message)` 追加真实发生的业务状态。业务不能传程序状态、task_id、轮次、时间或覆盖旧历史。仅接受 Worker 注入的当前 running 轮次 context（AsyncTaskInfo 含 ExecutionCount）；未注册阶段/状态、无开放业务阶段、终态及旧轮次迟到上报均返回明确错误，事务回滚不留部分记录。业务应处理这些错误，不得把未持久化进度当成事实。
+
+原子性：受理任务与 accepted、认领与 claimed、重排队与 requeued、终态与 finished，分别同一 GORM 事务提交。SQLite 认领仍是原子 UPDATE RETURNING，放在同一事务以带上步骤；其他关系库仍 SKIP LOCKED。业务上报先以 task_id+running+execution_count 条件 UPDATE 锁定任务，再追加/更新当前阶段，防并发完成或恢复串轮；唯一序号索引兜底。
+
+恢复与收尾：孤儿重排队只关闭旧阶段并追加 requeued，绝不删除历史；下一次认领 execution_count+1，以新 attempt 区分。取消（模板仅 queued）、已启用的整体超时、业务失败、system_error、重试次数耗尽、不确定写回恢复，均关闭全部开放阶段并追加 finished（业务数组仍空，不能伪造业务状态）；成败/错误仍看任务 process_status/error_code/error_message，并以 task_id+attempt 与当轮业务阶段关联。未完成的业务阶段关闭不等于业务成功。没有新增步骤超时、默认期限或自动重跑策略。
+
+定位路径：task_id → execution_count/steps[].attempt → business 阶段及实际状态数组 → 同轮 engine 阶段/服务端时间 → 任务错误。可读历史判断卡在排队、引擎认领还是哪个具体业务阶段。介入只使用既有 task.cancel（模板 queued）及既有孤儿恢复策略；不确定写回继续禁止盲目重跑。本能力是通用机制，测试不依赖任何具体业务。
+
+
 # 5. 验收边界
 
 真实验收必须分别证明：
@@ -152,6 +187,7 @@ stateDiagram-v2
 - [ ] 🟡 DONE — 未尽之事自愈：`RequeueOrphanedTasks` 经 `policy` 维护大循环每轮侦测（in-flight 防误拉）。
 - [ ] 🟡 DONE — `task.get` / `task.list` / `task.cancel` 带所有权校验接入统一调用链。
 - [ ] 🟡 DONE — Task/Policy 走主关系库（含 SQLite 原子认领）；默认关闭的整体超时与可选重试次数限制已用测试固定；写回不确定不重跑；断线不改变已持久化任务。
+- [ ] 🟡 DONE — 通用持久步进：引擎与业务分层、业务注册/校验、同轮次只读快照、恢复不删历史；SQLite 通用测试通过，实例 UI 另验收。
 - [ ] ⬜ TODO — 首个真实异步业务方法接入后完成受理→执行端到端验收（仓内禁造演示方法）。
 - [ ] ⬜ TODO — done 任务的归档/清理策略（保留窗口拍板后作为 `policy` 定期轮询租户实施）。
 - [ ] ⬜ TODO — 任务载荷持久化加密契约（待真实敏感任务出现）。
