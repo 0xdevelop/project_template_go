@@ -76,14 +76,14 @@ flowchart LR
 
 ## 3.1. auth.verify_code.send.email
 
-发送邮箱验证码（Public 方法）。
+生成邮箱验证码并无条件记录服务 INFO 日志，邮件为独立可选能力（Public 方法）。
 
 ```json
 { "email": "user@example.com" }
 ```
 
 - 验证码统一存入 `VerificationCode`，以规范化后的 `recipient` 绑定接收目标；Email 和 SMS 只区分发送通道，不拆分验证码表。
-- 邮件投递收口在单一函数内按 `email.provider` 配置选择供应商。
+- 邮件投递收口在单一函数内按 `email.provider` 配置选择供应商；开关、失败处理、响应与配置迁移见 [验证码日志与邮件操作说明](verification_delivery.md)。日志不代表邮件成功或码有效。
 
 ## 3.2. auth.verify_code.check.email
 
@@ -204,7 +204,7 @@ API key 记录中的 `created_at`、`last_used_at`、`revoked_at` 使用 UTC 毫
 
 # 4. 数据与并发纪律
 
-- 验证码不得明文落库、写日志或进入响应（唯一例外：Debug 运行模式可写 Debug 日志供本地联调，Release/Test 禁止），必须具备 TTL、尝试次数、发送间隔、小时发送上限和消费状态。
+- 验证码不得明文落库或进入响应；按用户明确要求，每次真实生成均记录服务 INFO 日志（所有运行模式，无开关，与可选邮件独立）。日志须受限访问，不能证明码有效或邮件成功；TTL、尝试预算、冷却、小时上限和一次性消费不变，详见 [操作说明](verification_delivery.md)。
 - JWT 必须固定签名算法、issuer、audience、有效期和 token 类型。
 - 统一准入门禁：非 Public 方法在门禁启用时 Execute 前经 `AuthenticateRequest` 鉴权，入口按 `auth_cfg.auth_type` 分发（缺省 `jwt`，`bridge` 见 5.1；非法值 fail-closed）。`auth_type` 一次只开一种。`jwt` 形态校验不共路：`key_` 走 API key（明文 sha256 查库、对上用户、未吊销），其余走自签 JWT 和未撤销 session。两边都通过之后才共路，加载同一个 DB 用户再进 Execute；用户不存在则拒绝。身份是 UserID。一次调用只带一种凭证。
 - 凭证携带：HTTP 使用 `Authorization: Bearer <凭证>`，gRPC 使用 `authorization` metadata，WebSocket 支持握手头；JSON-RPC、WebSocket、gRPC 同时保留兼容字段 `arguments.jwt_token`，非空时优先于头。每次调用只带一种凭证，也只选一个携带位置。浏览器原生 WebSocket 无法设置 Authorization 头，使用兼容字段。MCP 使用标准 HTTP 头，对外 schema 不含 `jwt_token`。
@@ -215,15 +215,15 @@ API key 记录中的 `created_at`、`last_used_at`、`revoked_at` 使用 UTC 毫
 - `storage` 包是唯一存储入口。查询和写入使用 `GormDB(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `GormAutoMigrate` 同步，不得经另一连接池、原始 DDL、数据库 CLI 或外部脚本修改。
 - 多关系库并存时，Auth/User 经 `GormDB(ctx)` 使用 `storage_cfg.primary` 指定的主库；程序固定存储与 Ability 独立实例的边界见 [存储说明](storage.md)。
 - 邮件通道供应商由 auth 配置 `email.provider` 选择，当前仅支持 `resend`（Resend 官方 Go SDK）；配置进入 `config.FileConfig` 的 YAML/JSON/TOML 体系。
-- `email` 配置块的 `provider`、`api_key`、`from`、`product_name`（邮件文案品牌名）、`verification_subject` 均为强配置：缺失或非法在配置加载层显式拒绝，不在业务代码里兜默认值。
+- `email.enabled=false` 明确关闭邮件；已启用邮件的供应商、凭证、合法发件人、品牌和主题在加载与最终调用两层校验。旧块未写开关保留发送意图，缺失块则不发送；新通用冷却键及兼容规则见 [操作说明](verification_delivery.md)。
 - Auth 配置校验失败输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 完整键路径，敏感字段只报名不报值）。
-- API key、密码、验证码和 token 不得写日志、落入错误响应或以明文保存。
+- API key、密码和 token 不得写日志、落入错误响应或以明文保存。验证码仅允许上述用户授权的服务 INFO 日志，不进入响应或明文数据库。
 
 # 5. 验收边界
 
 真实验收必须分别证明：
 
-- 邮箱验证码由有效 Resend 配置成功送达。
+- 无邮件、邮件成功/失败均真实生码并记 INFO；关闭邮件响应 `sent=false`，供应商调用成功才为 `sent=true`；失败码不可消费。真实供应商收件验收需另行授权，不能用模拟供应商结果代替。
 - 邮箱验证码检查不会消费，最终注册会一次性消费。
 - 注册创建 User。
 - 邮箱密码登录成功。

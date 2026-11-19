@@ -64,8 +64,9 @@ policy_cfg: # Policy scheduling configurations
 auth_cfg: # Auth configurations
   enabled: true # 统一准入门禁开关；缺省 true；false=门禁放行不提供身份，依赖身份的方法不可用
   auth_type: "jwt" # 鉴权类型；缺省与当前唯一支持值均为 jwt
-  email: # Email delivery configuration
-    provider: "resend"
+  email:
+    enabled: false # 仅控制邮件；真实验证码始终写服务 INFO 日志
+    provider: "resend" # 供应商值，不是能力配置键
     api_key: ""
     from: ""
     reply_to: ""
@@ -74,7 +75,7 @@ auth_cfg: # Auth configurations
   verification: # Verification code policy
     code_ttl_seconds: 600
     max_attempts: 5
-    resend_interval_seconds: 60
+    send_interval_seconds: 60
     hourly_send_limit: 5
     code_hash_secret: "dev_local_code_hash_secret_0123456789"
   session: # JWT and refresh session policy

@@ -21,6 +21,10 @@ wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/n
 
 `new_project.sh` 会：重写全部 module path 与项目名引用；patch `config/config.go` 常量（`ProjectName` / `ProjectVersion`→`v0.0.1` / `ProjectBundleID`）；重命名 `example_files/` 带模版名的文件；清空 `changelog/`；保留已有 `LICENSE` 与 `README.md`；最后删除自身。仅依赖 `git` 与 `bash`。
 
+## 验证码日志与可选邮件
+
+真实生成的验证码始终记录服务 INFO 日志；邮件由 `auth_cfg.email.enabled` 独立控制，并在配置加载和最终调用两层严格校验。日志不代表邮件成功或码有效；配置迁移、响应及失败处理见 [操作说明](docs/verification_delivery.md)。
+
 ## API 通信与执行架构
 
 项目统一复用 MCP Tool Call 数据模型。MCP、JSON-RPC、WebSocket 和 gRPC 都运输同一份 `tools/call → name → arguments` 请求，并返回同一份 MCP `CallToolResult`；只有通信协议外壳不同。完整规范见 [`docs/api_description.md`](docs/api_description.md)。

@@ -3,6 +3,7 @@ package api_auth_config
 
 import (
 	"errors"
+	"net/mail"
 	"strings"
 
 	"github.com/george012/gtbox/gtbox_log"
@@ -46,6 +47,7 @@ type BridgeConfig struct {
 }
 
 type EmailConfig struct {
+	Enabled             *bool  `yaml:"enabled,omitempty" json:"enabled,omitempty" toml:"enabled,omitempty" comment:"邮件发送开关；无 email 块默认 false；旧 email 块未写 enabled 保持 true。验证码 INFO 日志不受此开关影响"`
 	Provider            string `yaml:"provider" json:"provider" toml:"provider"`
 	APIKey              string `yaml:"api_key" json:"api_key" toml:"api_key"`
 	From                string `yaml:"from" json:"from" toml:"from"`
@@ -55,9 +57,11 @@ type EmailConfig struct {
 }
 
 type VerificationConfig struct {
-	CodeTTLSeconds        int    `yaml:"code_ttl_seconds" json:"code_ttl_seconds" toml:"code_ttl_seconds"`
-	MaxAttempts           int    `yaml:"max_attempts" json:"max_attempts" toml:"max_attempts"`
-	ResendIntervalSeconds int    `yaml:"resend_interval_seconds" json:"resend_interval_seconds" toml:"resend_interval_seconds"`
+	CodeTTLSeconds      int  `yaml:"code_ttl_seconds" json:"code_ttl_seconds" toml:"code_ttl_seconds"`
+	MaxAttempts         int  `yaml:"max_attempts" json:"max_attempts" toml:"max_attempts"`
+	SendIntervalSeconds *int `yaml:"send_interval_seconds,omitempty" json:"send_interval_seconds,omitempty" toml:"send_interval_seconds,omitempty" comment:"连续请求交付的冷却秒数，正整数"`
+	// Legacy migration alias, unrelated to the Resend provider; new defaults emit only SendIntervalSeconds.
+	ResendIntervalSeconds *int   `yaml:"resend_interval_seconds,omitempty" json:"resend_interval_seconds,omitempty" toml:"resend_interval_seconds,omitempty" comment:"旧 send_interval_seconds 别名；同时配置时必须相等"`
 	HourlySendLimit       int    `yaml:"hourly_send_limit" json:"hourly_send_limit" toml:"hourly_send_limit"`
 	CodeHashSecret        string `yaml:"code_hash_secret" json:"code_hash_secret" toml:"code_hash_secret"`
 }
@@ -141,33 +145,109 @@ func invalidConfigField(configKeyPath string, reason string) {
 	gtbox_log.LogWarnf("auth config invalid: %s %s", configKeyPath, reason)
 }
 
-func CurrentEmailConfig() (*EmailConfig, error) {
+// EmailDeliveryEnabled is independent from mandatory verification-code INFO logging.
+// Preserve existing email blocks' behavior; never infer disabling from a missing API key.
+func EmailDeliveryEnabled() bool {
 	if CurrentCfgAuth == nil || CurrentCfgAuth.Email == nil {
-		invalidConfigField("auth_cfg.email", "block is not configured")
+		return false
+	}
+	if CurrentCfgAuth.Email.Enabled == nil {
+		return true
+	}
+	return *CurrentCfgAuth.Email.Enabled
+}
+
+// ValidateVerificationAliases checks migration conflicts without requiring an email provider at startup.
+func ValidateVerificationAliases(cfg *AuthConfig) error {
+	if cfg == nil || cfg.Verification == nil {
+		return nil
+	}
+	v := cfg.Verification
+	for _, interval := range []*int{v.SendIntervalSeconds, v.ResendIntervalSeconds} {
+		if interval != nil && *interval < 1 {
+			return errors.New("auth_cfg.verification send interval must be a positive integer")
+		}
+	}
+	if v.SendIntervalSeconds != nil && v.ResendIntervalSeconds != nil && *v.SendIntervalSeconds != *v.ResendIntervalSeconds {
+		return errors.New("auth_cfg.verification.send_interval_seconds conflicts with legacy resend_interval_seconds")
+	}
+	return nil
+}
+
+func CurrentEmailConfig() (*EmailConfig, error) {
+	if CurrentCfgAuth == nil {
 		return nil, errors.New("email config is not initialized")
 	}
-	config := CurrentCfgAuth.Email
-	if strings.ToLower(strings.TrimSpace(config.Provider)) != EmailProviderResend {
-		invalidConfigField("auth_cfg.email.provider", "is not a supported email provider")
-		return nil, errors.New("unsupported email provider")
+	if err := ValidateEmailConfig(CurrentCfgAuth.Email); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(config.APIKey) == "" {
-		invalidConfigField("auth_cfg.email.api_key", "is empty")
-		return nil, errors.New("email config is invalid")
+	config := *CurrentCfgAuth.Email
+	return &config, nil
+}
+
+// ValidateEmailSelection rejects an invalid selected email route before publishing a file configuration.
+// An explicit false permits empty credentials; a legacy block still means email enabled.
+func ValidateEmailSelection(cfg *AuthConfig) error {
+	if cfg == nil || cfg.Email == nil {
+		return nil
 	}
-	if strings.TrimSpace(config.From) == "" {
-		invalidConfigField("auth_cfg.email.from", "is empty")
-		return nil, errors.New("email config is invalid")
+	email := cfg.Email
+	if email.Provider != "" && email.Provider != EmailProviderResend {
+		return errors.New("auth_cfg.email.provider is unsupported")
 	}
-	if strings.TrimSpace(config.ProductName) == "" {
-		invalidConfigField("auth_cfg.email.product_name", "is empty")
-		return nil, errors.New("email config is invalid")
+	if err := validateEmailFieldSyntax(email); err != nil {
+		return err
 	}
-	if strings.TrimSpace(config.VerificationSubject) == "" {
-		invalidConfigField("auth_cfg.email.verification_subject", "is empty")
-		return nil, errors.New("email config is invalid")
+	if email.Enabled != nil && !*email.Enabled {
+		return nil
 	}
-	return config, nil
+	return ValidateEmailConfig(email)
+}
+
+// ValidateEmailConfig is repeated immediately at the provider boundary, even after startup validation.
+func ValidateEmailConfig(config *EmailConfig) error {
+	if config == nil {
+		return errors.New("auth_cfg.email is required for email delivery")
+	}
+	if config.Enabled != nil && !*config.Enabled {
+		return errors.New("auth_cfg.email.enabled is false")
+	}
+	if config.Provider != EmailProviderResend {
+		return errors.New("auth_cfg.email.provider is unsupported")
+	}
+	for _, field := range []struct{ name, value string }{
+		{"api_key", config.APIKey}, {"from", config.From}, {"product_name", config.ProductName}, {"verification_subject", config.VerificationSubject},
+	} {
+		if strings.TrimSpace(field.value) == "" {
+			return errors.New("auth_cfg.email." + field.name + " is required for email delivery")
+		}
+	}
+	return validateEmailFieldSyntax(config)
+}
+
+// Validate supplied field syntax even when sending is disabled; only required presence depends on enabled.
+func validateEmailFieldSyntax(config *EmailConfig) error {
+	// Bearer credentials cannot contain whitespace/control/non-ASCII characters. Actual authorization is the provider's job.
+	for _, ch := range config.APIKey {
+		if ch < 33 || ch > 126 {
+			return errors.New("auth_cfg.email.api_key has invalid characters")
+		}
+	}
+	if strings.ContainsAny(config.VerificationSubject, "\r\n") {
+		return errors.New("auth_cfg.email.verification_subject is invalid")
+	}
+	for _, field := range []struct{ name, value string }{{"from", config.From}, {"reply_to", config.ReplyTo}} {
+		if field.value == "" {
+			continue
+		}
+		if strings.ContainsAny(field.value, "\r\n") {
+			return errors.New("auth_cfg.email." + field.name + " is invalid")
+		}
+		if _, err := mail.ParseAddress(field.value); err != nil {
+			return errors.New("auth_cfg.email." + field.name + " is invalid")
+		}
+	}
+	return nil
 }
 
 func CurrentVerificationConfig() (*VerificationConfig, error) {
@@ -175,7 +255,14 @@ func CurrentVerificationConfig() (*VerificationConfig, error) {
 		invalidConfigField("auth_cfg.verification", "block is not configured")
 		return nil, errors.New("verification config is not initialized")
 	}
-	config := CurrentCfgAuth.Verification
+	copyConfig := *CurrentCfgAuth.Verification
+	config := &copyConfig
+	if config.SendIntervalSeconds != nil && config.ResendIntervalSeconds != nil && *config.SendIntervalSeconds != *config.ResendIntervalSeconds {
+		return nil, errors.New("auth_cfg.verification.send_interval_seconds conflicts with legacy resend_interval_seconds")
+	}
+	if config.SendIntervalSeconds == nil {
+		config.SendIntervalSeconds = config.ResendIntervalSeconds
+	}
 	if config.CodeTTLSeconds < 1 {
 		invalidConfigField("auth_cfg.verification.code_ttl_seconds", "must be >= 1")
 		return nil, errors.New("verification config is invalid")
@@ -184,8 +271,8 @@ func CurrentVerificationConfig() (*VerificationConfig, error) {
 		invalidConfigField("auth_cfg.verification.max_attempts", "must be >= 1")
 		return nil, errors.New("verification config is invalid")
 	}
-	if config.ResendIntervalSeconds < 1 {
-		invalidConfigField("auth_cfg.verification.resend_interval_seconds", "must be >= 1")
+	if config.SendIntervalSeconds == nil || *config.SendIntervalSeconds < 1 {
+		invalidConfigField("auth_cfg.verification.send_interval_seconds", "must be >= 1")
 		return nil, errors.New("verification config is invalid")
 	}
 	if config.HourlySendLimit < 1 {

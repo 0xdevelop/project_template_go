@@ -45,8 +45,8 @@
 - api 层（协议 Adapter、APIExecuter、准入门禁、`api_auth` 域）定型后不再随业务演进修改；新增功能一律进 `ability` 业务子包。契约明记的既有例外：`SupportedMethod.Async` 受理语义的一次性接入，`ability_user_profile` 的顶层装配（profile 依赖父包 `ability_user` 数据方法，父包带子包装配会成 import 环），2026-09-11 用户拍板的凭证入口改造（Adapter 透传 `Authorization` 头 + 监听地址配置化），以及 2026-11-13 用户要求的用户级 API key 门禁分流。
 - 监听地址是必填配置：`api_cfg.api_cfg_{jsonRPC,mcp,websocket,grpc}.bind_address` 缺失或已启用端口非法时 `config.ApiConfig.Validate()` 在启动期拒绝，代码里不兜底 `127.0.0.1` / `0.0.0.0`；生成的缺省配置只监听本机，对外部署由运维改成 `0.0.0.0`。
 - Auth 需要用户身份或校验密码时必须调用 `ability_user` 的方法，不得直接查询、创建或更新 User model；注册事务把当前 GORM transaction 传给 User 方法，User 方法不得另开事务。
-- 邮件发送供应商由 Auth `email` 配置的 `provider` 字段选择，当前仅支持 `resend`（官方 Go SDK）；`api_key`、`from`、`product_name`、`verification_subject` 等均为强配置，缺失或非法在配置加载层显式拒绝并输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 键路径，敏感字段只报名不报值），不在业务代码里兜默认值。
-- 密码、验证码、session/token 等敏感值不得明文落库或写日志。唯一例外：Debug 运行模式下验证码明文可写 Debug 日志供本地联调，Release/Test 模式禁止。认证失败响应不得泄露邮箱或手机号是否存在。
+- 邮件是 Auth `email.enabled` 控制的独立可选能力，供应商仅为严格枚举 `provider: "resend"`。显式 false 不发信，无 email 块不发信；旧块无开关保留发送意图。已启用邮件的凭证、合法地址、品牌及主题在配置加载与最终调用两层校验，失败明确返回，不把日志当邮件成功；通用冷却键为 send_interval_seconds，旧 resend_interval_seconds 仅作兼容别名，规则见 docs/verification_delivery.md。
+- 密码、session/token 不得明文落库或写日志。按用户最新明确要求：每次真实生成验证码，所有运行模式均立即记服务 INFO（无开关，与邮件配置/结果独立）；只带必要随机关联信息，不带完整地址，不向 API/聊天/截图/测试输出暴露码。日志不保证码有效；失败码保持不可消费。认证失败响应不得泄露账户存在性。
 
 ## 存储
 

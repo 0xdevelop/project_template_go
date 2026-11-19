@@ -69,7 +69,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 4.1. auth.verify_code.send.email
 
-发送邮箱验证码
+生成邮箱验证码并记录 INFO 日志；邮件可选
 
 `arguments` 传参举例（仅含必填字段）：
 

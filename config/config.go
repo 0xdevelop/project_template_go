@@ -160,10 +160,8 @@ func buildYAMLCommentMap(cfg interface{}, parentPath string) yaml.CommentMap {
 }
 
 func LoadConfig(file string) error {
-	// 确保GlobalConfig已初始化
-	if GlobalConfig == nil {
-		GlobalConfig = &FileConfig{}
-	}
+	// Decode a fresh snapshot: omitted email/mode fields must not inherit a previous file's delivery route.
+	loadedConfig := &FileConfig{}
 
 	buf, err := os.ReadFile(file)
 	if err != nil {
@@ -171,36 +169,46 @@ func LoadConfig(file string) error {
 	}
 
 	ext := strings.ToLower(filepath.Ext(file))
+	if err := validateAuthDeliveryDocument(buf, ext); err != nil {
+		return err
+	}
 	var decodeErr error
 	switch ext {
 	case ".yaml", ".yml":
-		decodeErr = yaml.Unmarshal(buf, GlobalConfig)
+		decodeErr = yaml.Unmarshal(buf, loadedConfig)
 	case ".json":
-		decodeErr = json.Unmarshal(buf, GlobalConfig)
+		decodeErr = json.Unmarshal(buf, loadedConfig)
 	case ".toml":
-		decodeErr = toml.Unmarshal(buf, GlobalConfig)
+		decodeErr = toml.Unmarshal(buf, loadedConfig)
 	default:
-		if decodeErr = yaml.Unmarshal(buf, GlobalConfig); decodeErr != nil {
-			if decodeErr = toml.Unmarshal(buf, GlobalConfig); decodeErr != nil {
-				decodeErr = json.Unmarshal(buf, GlobalConfig)
+		if decodeErr = yaml.Unmarshal(buf, loadedConfig); decodeErr != nil {
+			if decodeErr = toml.Unmarshal(buf, loadedConfig); decodeErr != nil {
+				decodeErr = json.Unmarshal(buf, loadedConfig)
 			}
 		}
 	}
 	if decodeErr != nil {
 		return decodeErr
 	}
-	GlobalConfig.StorageCfg, err = storage_config.Apply(GlobalConfig.StorageCfg, GlobalConfig.LegacyMysql)
+	loadedConfig.StorageCfg, err = storage_config.Apply(loadedConfig.StorageCfg, loadedConfig.LegacyMysql)
 	if err != nil {
 		return err
 	}
-	if err := GlobalConfig.FrontendCfg.Validate(); err != nil {
+	if err := loadedConfig.FrontendCfg.Validate(); err != nil {
 		return err
 	}
-	if err := GlobalConfig.PolicyCfg.Validate(); err != nil {
+	if err := loadedConfig.PolicyCfg.Validate(); err != nil {
 		return err
 	}
-	api_auth_config.CurrentCfgAuth = GlobalConfig.AuthCfg
-	policy_config.CurrentCfgPolicy = GlobalConfig.PolicyCfg
+	if err := api_auth_config.ValidateVerificationAliases(loadedConfig.AuthCfg); err != nil {
+		return err
+	}
+	if err := api_auth_config.ValidateEmailSelection(loadedConfig.AuthCfg); err != nil {
+		return err
+	}
+	GlobalConfig = loadedConfig
+	api_auth_config.CurrentCfgAuth = loadedConfig.AuthCfg
+	policy_config.CurrentCfgPolicy = loadedConfig.PolicyCfg
 	return nil
 }
 
@@ -245,6 +253,8 @@ func SaveConfig(file string, content *FileConfig) error {
 
 func generateDefaultConfig() *FileConfig {
 	authGateEnabledDefault := true
+	emailEnabledDefault := false
+	sendIntervalDefault := 60
 	aport := 13001
 	// 生成的缺省配置只监听本机；对外部署由运维改成 0.0.0.0，不在代码里兜底。
 	bindLocal := "127.0.0.1"
@@ -298,15 +308,16 @@ func generateDefaultConfig() *FileConfig {
 			Enabled:  &authGateEnabledDefault,
 			AuthType: api_auth_config.AuthTypeJWT,
 			Email: &api_auth_config.EmailConfig{
+				Enabled:             &emailEnabledDefault,
 				Provider:            api_auth_config.EmailProviderResend,
 				ProductName:         ProjectName,
 				VerificationSubject: ProjectName + " verification code",
 			},
 			Verification: &api_auth_config.VerificationConfig{
-				CodeTTLSeconds:        10 * 60,
-				MaxAttempts:           5,
-				ResendIntervalSeconds: 60,
-				HourlySendLimit:       5,
+				CodeTTLSeconds:      10 * 60,
+				MaxAttempts:         5,
+				SendIntervalSeconds: &sendIntervalDefault,
+				HourlySendLimit:     5,
 			},
 			Session: &api_auth_config.SessionConfig{
 				Issuer:                 ProjectName,

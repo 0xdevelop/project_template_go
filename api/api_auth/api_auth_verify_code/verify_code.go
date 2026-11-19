@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -15,10 +16,9 @@ import (
 	authModel "github.com/0xdevelop/project_template_go/api/api_auth/api_auth_model"
 	"github.com/0xdevelop/project_template_go/api/api_error_code"
 	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
-	"github.com/0xdevelop/project_template_go/config"
 	"github.com/0xdevelop/project_template_go/storage"
-	"github.com/george012/gtbox"
 	"github.com/george012/gtbox/gtbox_log"
+	"github.com/google/uuid"
 	"github.com/resend/resend-go/v4"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -31,10 +31,17 @@ const (
 	MethodVerificationCodeCheckSMS   = "auth.verify_code.check.sms"
 )
 
+// Dependency seams keep provider/log tests entirely local; normal execution uses the service INFO logger and official SDK.
+var verificationCodeInfof = gtbox_log.LogInfof
+var sendEmailRequest = func(ctx context.Context, apiKey string, request *resend.SendEmailRequest) error {
+	_, err := resend.NewClient(apiKey).Emails.SendWithContext(ctx, request)
+	return err
+}
+
 func LoadAPIMethods() {
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodVerificationCodeSendEmail,
-		Description: "发送邮箱验证码",
+		Description: "生成邮箱验证码并记录 INFO 日志；邮件可选",
 		Public:      true,
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
@@ -96,7 +103,7 @@ func VerificationCodeEmailSend(ctx context.Context, input interface{}) (interfac
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	email, err := api_auth_common.NormalizeEmail(emailValue)
-	if err != nil {
+	if err != nil || !validVerificationRecipient(email) {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	return sendVerificationCodeEmail(ctx, email)
@@ -114,7 +121,7 @@ func VerificationCodeEmailCheck(ctx context.Context, input interface{}) (interfa
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	email, err := api_auth_common.NormalizeEmail(emailValue)
-	if err != nil {
+	if err != nil || !validVerificationRecipient(email) {
 		return nil, api_error_code.ErrInvalidArguments
 	}
 	return checkVerificationCode(ctx, email, code)
@@ -134,35 +141,40 @@ func sendVerificationCodeEmail(ctx context.Context, email string) (map[string]in
 		api_auth_common.LogInternalFailure("load verification config")
 		return nil, api_error_code.ErrVerifyCodeDeliveryFailed
 	}
-	emailConfig, err := api_auth_config.CurrentEmailConfig()
-	if err != nil {
-		api_auth_common.LogInternalFailure("load email config")
-		return nil, api_error_code.ErrVerifyCodeDeliveryFailed
-	}
-
-	verificationCode, code, err := prepareVerificationCode(ctx, email)
+	// Every actual generation is INFO-logged by prepareVerificationCode, before storage/mail can fail.
+	verificationCode, code, deliveryID, err := prepareVerificationCode(ctx, email)
 	if err != nil {
 		api_auth_common.LogInternalFailure("prepare verification code")
 		return nil, err
 	}
-
-	// 仅 Debug 运行模式输出验证码明文，供本地联调模拟无真实邮箱的注册；Release/Test 禁止（契约见 AGENTS.md Auth 节）。
-	if config.CurrentApp != nil && config.CurrentApp.CurrentRunMode == gtbox.RunModeDebug {
-		gtbox_log.LogDebugf("debug-only email verification code for %s: %s", email, code)
-	}
-
-	if err = deliverVerificationEmail(ctx, emailConfig, email, code, verificationConfig.CodeTTLSeconds); err != nil {
-		updateContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		if db, dbErr := storage.GormDB(updateContext); dbErr == nil {
-			_ = db.Model(&authModel.AuthVerifyCode{}).
-				Where("id = ? AND code_hash = ? AND sent_at IS NULL", verificationCode.ID, verificationCode.CodeHash).
-				Update("code_hash", "").Error
+	emailEnabled := api_auth_config.EmailDeliveryEnabled()
+	if emailEnabled {
+		var emailConfig *api_auth_config.EmailConfig
+		if api_auth_config.CurrentCfgAuth != nil && api_auth_config.CurrentCfgAuth.Email != nil {
+			copyConfig := *api_auth_config.CurrentCfgAuth.Email
+			emailConfig = &copyConfig
 		}
-		api_auth_common.LogInternalFailure(fmt.Sprintf("deliver email verification code: %v", err))
-		return nil, api_error_code.ErrVerifyCodeDeliveryFailed
-	}
+		// Selected email dependencies are validated at this final boundary, after real generation/logging.
+		if err = deliverVerificationEmail(ctx, emailConfig, email, code, verificationConfig.CodeTTLSeconds); err != nil {
+			updateContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
 
+			db, cleanupErr := storage.GormDB(updateContext)
+			if cleanupErr == nil {
+				cleanupErr = db.Model(&authModel.AuthVerifyCode{}).
+					Where("id = ? AND code_hash = ? AND sent_at IS NULL", verificationCode.ID, verificationCode.CodeHash).
+					Update("code_hash", "").Error
+			}
+			if cleanupErr != nil {
+				gtbox_log.LogWarnf("auth verification pending-code cleanup failed delivery_id=%s; code remains unactivated", deliveryID)
+			}
+
+			// Provider errors may contain addresses, codes or request bodies. Never log those values.
+			gtbox_log.LogWarnf("auth verification email delivery failed delivery_id=%s; code not activated", deliveryID)
+			return nil, api_error_code.ErrVerifyCodeDeliveryFailed
+		}
+	}
+	// NULL sent_at gates verification/registration until the selected workflow has completed.
 	updateContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	db, err := storage.GormDB(updateContext)
@@ -176,21 +188,44 @@ func sendVerificationCodeEmail(ctx context.Context, email string) (map[string]in
 		return nil, result.Error
 	}
 	if result.RowsAffected != 1 {
-		return nil, errors.New("email verification code was superseded")
+		return nil, errors.New("verification code was superseded")
 	}
 	return map[string]interface{}{
-		"sent":       true,
-		"expires_in": verificationConfig.CodeTTLSeconds,
+		"sent":        emailEnabled,
+		"code_logged": true,
+		"delivery_id": deliveryID,
+		"expires_in":  verificationConfig.CodeTTLSeconds,
 	}, nil
+}
+
+func validVerificationRecipient(email string) bool {
+	address, err := mail.ParseAddress(email)
+	return err == nil && address.Address == email
 }
 
 // deliverVerificationEmail 按配置选定的供应商发送验证码邮件，是唯一的邮件供应商调用收口。
 func deliverVerificationEmail(ctx context.Context, emailConfig *api_auth_config.EmailConfig, email string, code string, ttlSeconds int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := api_auth_config.ValidateEmailConfig(emailConfig); err != nil {
+		return err
+	}
+	if ttlSeconds < 1 || !api_auth_common.VerificationCodePattern.MatchString(code) {
+		return errors.New("invalid verification delivery payload")
+	}
+	if _, err := api_auth_common.NormalizeEmail(email); err != nil {
+		return errors.New("invalid verification recipient")
+	}
+	if !validVerificationRecipient(email) {
+		return errors.New("invalid verification recipient")
+	}
+
 	subject := strings.TrimSpace(emailConfig.VerificationSubject)
 	productName := strings.TrimSpace(emailConfig.ProductName)
 	ttlMinutes := int(math.Ceil(float64(ttlSeconds) / 60))
 
-	switch strings.ToLower(strings.TrimSpace(emailConfig.Provider)) {
+	switch emailConfig.Provider {
 	case api_auth_config.EmailProviderResend:
 		params := &resend.SendEmailRequest{
 			From:    emailConfig.From,
@@ -210,9 +245,7 @@ func deliverVerificationEmail(ctx context.Context, emailConfig *api_auth_config.
 				ttlMinutes,
 			),
 		}
-		client := resend.NewClient(emailConfig.APIKey)
-		_, err := client.Emails.SendWithContext(ctx, params)
-		return err
+		return sendEmailRequest(ctx, emailConfig.APIKey, params)
 	default:
 		return errors.New("unsupported email provider")
 	}
@@ -238,19 +271,20 @@ func PurgeExpired(ctx context.Context) error {
 	return nil
 }
 
-func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.AuthVerifyCode, string, error) {
+func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.AuthVerifyCode, string, string, error) {
 	verificationConfig, err := api_auth_config.CurrentVerificationConfig()
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	db, err := storage.GormDB(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	for attempt := 0; attempt < 2; attempt++ {
 		verificationCode := &authModel.AuthVerifyCode{}
 		code := ""
+		deliveryID := ""
 		now := time.Now().UTC()
 		err = db.Transaction(func(tx *gorm.DB) error {
 			findErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -277,10 +311,19 @@ func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.
 				verificationCode.SendWindowStartedAt = now
 				verificationCode.SendCount = 0
 			}
+			deliveryUUID, uuidErr := uuid.NewRandom()
+			if uuidErr != nil {
+				return uuidErr
+			}
+			deliveryID = deliveryUUID.String()
 			code, err = api_auth_common.NewVerificationCode()
 			if err != nil {
 				return err
 			}
+			// Every generated code in all run modes is logged, even if storage/mail later fails.
+			// No recipient/user identity; an INFO entry does not imply validity or mail success.
+			verificationCodeInfof("auth verification delivery_id=%s code=%s expires_at=%s validity=pending", deliveryID, code,
+				now.Add(time.Duration(verificationConfig.CodeTTLSeconds)*time.Second).Format(time.RFC3339))
 			verificationCode.CodeHash = api_auth_common.VerificationCodeHash(
 				verificationConfig.CodeHashSecret,
 				recipient,
@@ -291,7 +334,7 @@ func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.
 				time.Duration(verificationConfig.CodeTTLSeconds) * time.Second,
 			)
 			verificationCode.ResendAvailableAt = now.Add(
-				time.Duration(verificationConfig.ResendIntervalSeconds) * time.Second,
+				time.Duration(*verificationConfig.SendIntervalSeconds) * time.Second,
 			)
 			verificationCode.SendCount++
 			verificationCode.SentAt = nil
@@ -302,13 +345,13 @@ func prepareVerificationCode(ctx context.Context, recipient string) (*authModel.
 			return tx.Save(verificationCode).Error
 		})
 		if err == nil {
-			return verificationCode, code, nil
+			return verificationCode, code, deliveryID, nil
 		}
 		if !storage.IsDuplicateKeyError(err) || attempt == 1 {
-			return nil, "", err
+			return nil, "", "", err
 		}
 	}
-	return nil, "", errors.New("unable to prepare verification code")
+	return nil, "", "", errors.New("unable to prepare verification code")
 }
 
 func checkVerificationCode(ctx context.Context, recipient string, code string) (map[string]interface{}, error) {
