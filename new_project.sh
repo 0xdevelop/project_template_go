@@ -212,6 +212,8 @@ if [[ ! -f "${TARGET_DIR}/README.md" ]]; then
 - 全量协作契约：\`AGENTS.md\`
 - API 方法清单：\`docs/api_methods.md\`（\`gen_api_docs.sh\` 生成，禁手改）
 - 各功能域契约：\`docs/ability_*.md\`
+- 产品验收闭环：\`docs/product_acceptance.md\`（GitHub assets 安装、业务结果与卸载实测；README 只保留本短链）
+- 发版入口：无参 \`./git_tag.sh\`
 EOF
 fi
 

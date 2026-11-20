@@ -105,7 +105,8 @@ project_template_go
 - 异步任务以主关系库（SQLite / MySQL / PostgreSQL）记录为持久化排队区，Policy 按 `runtime.NumCPU() × policy_cfg.workers_scaller` 填充空闲名额；详见 [`docs/ability_task.md`](docs/ability_task.md)。整体超时与重试次数限制均由显式开关控制，示例配置写成 `task_lifecycle_timeout_enabled: false`、`task_execute_retry_limit_enabled: false`；开启整体超时时 `task_lifecycle_timeout_seconds` 必须为正整数（秒，从 `created_at` 起算），`0` 或负数会被配置校验拒绝。
 - Policy 单大循环、临时 Worker 释放、同类维护任务防重入与重启续跑契约见 [`docs/ability_policy.md`](docs/ability_policy.md)。
 - `docs/api_methods.md` 由 `./gen_api_docs.sh` 从方法注册表生成；对外文档仅 `GET /docs_api` 单页（服务端注入）。
-- proto 只由 `./gen_proto.sh` 生成；发版走 `./git_tag.sh`（自动刷新方法文档与 changelog）。
+- proto 只由 `./gen_proto.sh` 生成；发版走无参 `./git_tag.sh`（自动刷新方法文档与 changelog；Actions 为 `release` → `Build` → `RemoveOldRelease`）。
+- 产品验收闭环见 [`docs/product_acceptance.md`](docs/product_acceptance.md)：必须用 GitHub Release assets 和官方安装脚本完成部署、业务结果与卸载，并在 `docs/` 留下实测记录。
 
 ### 默认端口
 

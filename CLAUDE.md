@@ -9,6 +9,7 @@
 - 任何改动：`AGENTS.md`（全量强制规则）。
 - API 编排 / 协议 Adapter / 执行链 / 新增方法：`docs/api_description.md`。
 - 架构总览与模版使用方式：`README.md`。
+- 发版、官方安装/卸载与产品验收闭环：`docs/product_acceptance.md`。
 
 ## 会话必守硬边界（摘要，全文以 `AGENTS.md` 为准）
 

@@ -85,3 +85,7 @@ PostgreSQL 走 gtbox `gtbox_orm_postgres`：`New`、`PostgresDB`、`Close`。驱
 - 协议层测试、单元测试、编译和 `AutoMigrate` 成功是不同证据，不得互相替代。
 - 业务失败必须通过统一 `CallToolResult` 返回（HTTP 200 + `isError=true`）；请求外壳损坏、协议不匹配或服务内部故障才使用协议错误。
 - 所有缓存和中间文件放在项目 `tmp/`，且删除 `tmp/` 不得影响后续重新构建或续做；启动的进程必须关闭并复查无残留。
+- 产品发版后的安装验收必须走完整闭环，正文见 [`docs/product_acceptance.md`](docs/product_acceptance.md)：GitHub Release assets 下载 → 官方安装脚本部署到脚本指定目录（本模板为 `/${APP_NAME}`）→ systemd 服务启动 → 跑完全程并得到预期业务结果 → 按官方脚本卸载 → 在根 `docs/` 留下实测过程文档，README 只保留短链。禁止用本地打包目录或手工半套包冒充 GitHub assets，禁止自行改安装前缀或装到 `~/.local/share`。
+- 发版入口是无参 `./git_tag.sh`，工作流保持 `release` → `Build` → `RemoveOldRelease`。以本模板为底稿做必要的小幅增量适配，禁止擅自重设计入口、默认语义或生命周期。发版不等于本闭环已通过。
+- 测试文档只记录实际发生的步骤、命令、时间（标明时区）、asset/release URL、安装路径、单元、任务与产物事实、卸载结果和未覆盖项。禁止把计划写成已发生，禁止伪造业务结果或科学质量。
+- 提交不得出现协作者（包括 AI / Cursor）；禁止 force-push。执行者按已明确标准自行核对证据，不把用户当验证者；仅在缺少用户才能提供的硬授权或凭据时停止。
