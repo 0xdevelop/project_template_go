@@ -58,6 +58,24 @@ function install() {
     fi
 }
 
+# If a later update step fails, restore the files replaced in this invocation.
+# Only start the previous service when that restore completed.
+function restore_previous_update() {
+    local restart_old=$1
+    if [[ -n "${BINARY_BAK:-}" && -f "${BINARY_BAK}" ]]; then
+        mv -f "${BINARY_BAK}" "${APP_DIR}/${APP_NAME}"
+        BINARY_BAK=""
+    fi
+    if [[ -n "${UNIT_BAK:-}" && -f "${UNIT_BAK}" ]]; then
+        mv -f "${UNIT_BAK}" "${SYSTEMD_PATH}/${APP_NAME}.service"
+        UNIT_BAK=""
+        systemctl daemon-reload
+    fi
+    if [[ "${restart_old}" == "start" ]]; then
+        systemctl start "${APP_NAME}.service"
+    fi
+}
+
 function updateBinary() {
     read -p "sure want to update ${APP_NAME} [yes/no]：" flag
     if [ -z $flag ]; then
@@ -65,18 +83,29 @@ function updateBinary() {
     elif [ "$flag" = "yes" -o "$flag" = "ye" -o "$flag" = "y" ]; then
         # update binary
         TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+        BINARY_BAK=""
+        UNIT_BAK=""
         systemctl stop "${APP_NAME}.service"
         if [[ -f "${APP_DIR}/${APP_NAME}" ]]; then
-            mv "${APP_DIR}/${APP_NAME}" "${APP_DIR}/${APP_NAME}.bak_${TIMESTAMP}"
+            BINARY_BAK="${APP_DIR}/${APP_NAME}.bak_${TIMESTAMP}"
+            mv "${APP_DIR}/${APP_NAME}" "${BINARY_BAK}"
         fi
         cp -f "${SCRIPT_DIR}/${APP_NAME}" "${APP_DIR}/${APP_NAME}"
 
         # update systemd service
         service_file=${SCRIPT_DIR}/${APP_NAME}.service
         if [[ -f "${service_file}" ]]; then
+            if [[ -f "${SYSTEMD_PATH}/${APP_NAME}.service" ]]; then
+                UNIT_BAK="${SYSTEMD_PATH}/${APP_NAME}.service.bak_${TIMESTAMP}"
+                cp -f "${SYSTEMD_PATH}/${APP_NAME}.service" "${UNIT_BAK}"
+            fi
             cp -f "${service_file}" "${SYSTEMD_PATH}"
             systemctl daemon-reload
-            systemctl restart "${APP_NAME}.service"
+            if ! systemctl restart "${APP_NAME}.service"; then
+                echo "update start failed; restoring previous ${APP_NAME} binary and unit"
+                restore_previous_update start
+                exit 1
+            fi
         fi
     fi
 }
