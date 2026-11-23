@@ -115,3 +115,5 @@ JSON-RPC `13001`、MCP `13002`、test_ui `13003`（`test_ui_cfg`，`127.0.0.1` �
 前端壳子、构建入口与 `frontend_cfg` 配置见 [`docs/frontend.md`](docs/frontend.md)。
 
 资源准备与启动门禁见[资源准备契约](docs/resource_preparation.md)。
+
+发布旧版本清理的幂等与失败边界见[清理契约](docs/release_cleanup.md)。

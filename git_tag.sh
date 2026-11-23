@@ -2,6 +2,8 @@
 
 set -e
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/release_cleanup.sh"
+
 ProductName=$(grep ProjectName ./config/config.go | awk -F '"' '{print $2}' | sed 's/\"//g')
 Product_version_key="ProjectVersion"
 VersionFile=./config/config.go
@@ -202,7 +204,7 @@ function git_handle_push() {
         && git push ${remote} v${next_version_no} \
         || return
     done
-    git tag -d v${pre_del_version_no}
+    release_delete_local_tag_if_present "v${pre_del_version_no}"
 }
 
 handle_input(){
