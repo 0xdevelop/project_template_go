@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/0xdevelop/project_template_go/common/resource"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,6 +23,8 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/goccy/go-yaml"
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/0xdevelop/project_template_go/common/app_path"
 )
 
 const (
@@ -43,6 +46,7 @@ type TestUIConfig struct {
 }
 
 type FileConfig struct {
+	ResourceCfg map[string]*resource.Config       `yaml:"resource_cfg" json:"resource_cfg" toml:"resource_cfg"`
 	StorageCfg  *storage_config.StorageConfig     `yaml:"storage_cfg" json:"storage_cfg" toml:"storage_cfg" comment:"存储"`
 	LegacyMysql *storage_config.LegacyMysqlConfig `yaml:"mysql_cfg" json:"mysql_cfg" toml:"mysql_cfg"`
 	ApiCfg      *api_config.ApiConfig             `toml:"api_cfg" yaml:"api_cfg" json:"api_cfg" comment:"API configurations"`
@@ -205,6 +209,19 @@ func LoadConfig(file string) error {
 	}
 	if err := api_auth_config.ValidateEmailSelection(loadedConfig.AuthCfg); err != nil {
 		return err
+	}
+	if CurrentApp != nil {
+		root, pathErr := app_path.ExecutableDir()
+		if pathErr != nil {
+			return pathErr
+		}
+		if loadedConfig.StorageCfg != nil && loadedConfig.StorageCfg.Sqlite != nil {
+			sqlite := loadedConfig.StorageCfg.Sqlite
+			sqlite.DBFilePath, pathErr = app_path.Resolve(root, sqlite.DBFilePath)
+			if pathErr != nil {
+				return pathErr
+			}
+		}
 	}
 	GlobalConfig = loadedConfig
 	api_auth_config.CurrentCfgAuth = loadedConfig.AuthCfg

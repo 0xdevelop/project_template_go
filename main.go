@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
 	"github.com/0xdevelop/project_template_go/api"
 	"github.com/0xdevelop/project_template_go/common"
+	"github.com/0xdevelop/project_template_go/common/app_path"
 	"github.com/0xdevelop/project_template_go/config"
 	"github.com/0xdevelop/project_template_go/custom_cmd"
 	"github.com/0xdevelop/project_template_go/frontend"
@@ -70,6 +72,14 @@ func setupApp() {
 		}
 	}
 
+	root, err := app_path.ExecutableDir()
+	if err != nil {
+		panic("cannot resolve executable resource root")
+	}
+	config.CurrentApp.AppRunAsDir = root
+	config.CurrentApp.AppLogPath = filepath.Join(root, "logs")
+	config.CurrentApp.AppConfigFilePath = filepath.Join(root, "conf/config.yaml")
+
 	config.CurrentApp.GitCommitHash = mGitCommitHash
 	config.CurrentApp.GitCommitTime = mGitCommitTime
 	config.CurrentApp.GoVersion = mGoVersion
@@ -88,18 +98,16 @@ func setupApp() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "resource" {
+		os.Exit(resourceCommand(os.Args[2:]))
+	}
 	runtime.LockOSThread()
 
 	setupApp()
 
 	defer common.PanicHandler()
 
-	if config.CurrentApp.CurrentRunMode == gtbox.RunModeDebug {
-		config.CurrentApp.AppConfigFilePath = "./example_files/config_local.yaml"
-		//config.CurrentApp.AppConfigFilePath = "./example_files/config_local_outside.yaml"
-	} else {
-		config.CurrentApp.AppConfigFilePath = "./conf/config.yaml"
-	}
+	// All run modes use the executable-owned configuration selected in setupApp.
 
 	var configLoadErr error
 	config.SyncConfigFile(func(err error) {

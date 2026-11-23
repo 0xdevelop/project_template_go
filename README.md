@@ -113,3 +113,5 @@ project_template_go
 JSON-RPC `13001`、MCP `13002`、test_ui `13003`（`test_ui_cfg`，`127.0.0.1` 仅本机，`0.0.0.0` 对外）、WebSocket `13004`、gRPC `13005`。
 
 前端壳子、构建入口与 `frontend_cfg` 配置见 [`docs/frontend.md`](docs/frontend.md)。
+
+资源准备与启动门禁见[资源准备契约](docs/resource_preparation.md)。
