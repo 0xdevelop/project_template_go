@@ -3,11 +3,12 @@ package config
 import (
 	"errors"
 	"fmt"
-	"github.com/0xdevelop/project_template_go/common/resource"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	"github.com/0xdevelop/project_template_go/common/resource"
 
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_config"
 	"github.com/0xdevelop/project_template_go/frontend/frontend_config"
@@ -272,7 +273,6 @@ func generateDefaultConfig() *FileConfig {
 	authGateEnabledDefault := true
 	emailEnabledDefault := false
 	sendIntervalDefault := 60
-	aport := 13001
 	// 生成的缺省配置只监听本机；对外部署由运维改成 0.0.0.0，不在代码里兜底。
 	bindLocal := "127.0.0.1"
 	fileCfg := &FileConfig{
@@ -281,19 +281,19 @@ func generateDefaultConfig() *FileConfig {
 			APICfgJsonRPC: &api_config_jsonRPC.APIConfigJsonRPC{
 				Enabled:           true,
 				BindAddress:       bindLocal,
-				Port:              aport,
+				Port:              apiPortDefault,
 				EncryptionEnabled: false,
 			},
 			APICfgMCP: &api_config_mcp.APIConfigMCP{
 				Enabled:          true,
 				BindAddress:      bindLocal,
-				Port:             aport + 1,
+				Port:             apiPortDefault + 1,
 				MCPTransportType: api_config_mcp.MCPTransportTypeStreamableHTTP,
 			},
 			APICfgWebSocket: &api_config_websocket.APIConfigWebSocket{
 				Enabled:     true,
 				BindAddress: bindLocal,
-				Port:        aport + 3,
+				Port:        apiPortDefault + 3,
 				AllowedOrigins: []string{
 					"127.0.0.1:*",
 					"localhost:*",
@@ -302,18 +302,18 @@ func generateDefaultConfig() *FileConfig {
 			APICfgGRPC: &api_config_grpc.APIConfigGRPC{
 				Enabled:     true,
 				BindAddress: bindLocal,
-				Port:        aport + 4,
+				Port:        apiPortDefault + 4,
 			},
 		},
 		FrontendCfg: &frontend_config.FrontendConfig{
 			Enabled:     true,
 			BindAddress: bindLocal,
-			Port:        aport + 5,
+			Port:        apiPortDefault + 5,
 		},
 		TestUICfg: &TestUIConfig{
 			Enabled:     true,
 			BindAddress: bindLocal,
-			Port:        aport + 2,
+			Port:        apiPortDefault + 2,
 		},
 		PolicyCfg: &policy_config.PolicyConfig{
 			PolicyDuration:               "10s",

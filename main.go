@@ -98,25 +98,31 @@ func setupApp() {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "resource" {
-		os.Exit(resourceCommand(os.Args[2:]))
-	}
 	runtime.LockOSThread()
 
 	setupApp()
 
 	defer common.PanicHandler()
 
+	if config.CurrentApp.CurrentRunMode == gtbox.RunModeDebug {
+		config.CurrentApp.AppConfigFilePath = "./example_files/config_local.yaml"
+	} else {
+		config.CurrentApp.AppConfigFilePath = "./conf/config.yaml"
+	}
+
+	config.SyncConfigFile(func(err error) {
+		if err != nil {
+			gtbox_log.LogErrorf("config file not loaded，stop proc：%v", err)
+			os.Exit(1)
+		}
+	})
+	if config.GlobalConfig == nil {
+		gtbox_log.LogErrorf("config file loaded，but config file is null, stop proc")
+		os.Exit(1)
+	}
+
 	// All run modes use the executable-owned configuration selected in setupApp.
 
-	var configLoadErr error
-	config.SyncConfigFile(func(err error) {
-		configLoadErr = err
-		gtbox_log.LogErrorf("config load failed: %v", err)
-	})
-	if configLoadErr != nil {
-		return
-	}
 	if err := storage.OpenStorage(); err != nil {
 		gtbox_log.LogErrorf("storage open failed: %v", err)
 		return
