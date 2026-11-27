@@ -9,13 +9,11 @@ type SupportedMethod struct {
 	Description string
 	InputSchema map[string]interface{}
 	Async       bool
-	// Public 为 true 的方法免统一准入门禁（如 test、验证码、注册、登录）；
-	// 零值 false = 受保护，APIExecuter 在 Execute 前验证凭证（fail-closed）：
-	// 凭证来自 HTTP Authorization: Bearer 头，或显式 arguments.jwt_token（后者优先），
-	// 验证后即从 arguments 移除，业务 Execute 只见业务参数；
-	// jwt_token 入参 schema 由注册表按非 Public 自动注入为可选项，业务注册禁止声明。
-	Public  bool
-	Execute func(context.Context, interface{}) (interface{}, error)
+	// Public 为 true 时跳过鉴权；false 时在执行或异步受理前验证凭证。
+	Public bool
+	// APIKeyAllowed 仅限制受保护方法的 API key 调用；默认 false，JWT 与 bridge 不受此字段限制。
+	APIKeyAllowed bool
+	Execute       func(context.Context, interface{}) (interface{}, error)
 }
 
 var currentSupportedMethods []*SupportedMethod
@@ -47,7 +45,7 @@ func jwtTokenSchema() map[string]interface{} {
 		"type":        "string",
 		"minLength":   1,
 		"maxLength":   8192,
-		"description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+		"description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
 	}
 }
 
@@ -100,6 +98,7 @@ func (method SupportedMethod) InputSchemaWithoutGateToken() map[string]interface
 	return copiedSchema
 }
 
+// Methods 按注册顺序拷出全部方法的值。
 func Methods() []SupportedMethod {
 	methods := make([]SupportedMethod, 0, len(currentSupportedMethods))
 	for _, method := range currentSupportedMethods {
@@ -108,6 +107,7 @@ func Methods() []SupportedMethod {
 	return methods
 }
 
+// Method 按名取注册项并返回注册表指针。
 func Method(name string) (*SupportedMethod, bool) {
 	for _, method := range currentSupportedMethods {
 		if method.Name == name {

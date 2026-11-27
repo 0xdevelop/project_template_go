@@ -15,6 +15,7 @@ type APIMethod = {
   protected: boolean;
   acceptsOrgId: boolean;
   public: boolean;
+  apiKeyAllowed: boolean;
 };
 
 type RESTParameter = {
@@ -99,6 +100,7 @@ type CatalogItem = {
   source: string;
   protected: boolean;
   acceptsOrgId: boolean;
+  apiKeyAllowed: boolean;
   rest?: RESTOperation;
 };
 
@@ -128,6 +130,7 @@ const transportMethodBadge = byId<HTMLElement>("transport-method");
 const domainSelect = byId<HTMLSelectElement>("api-domain");
 const groupSelect = byId<HTMLSelectElement>("api-group");
 const functionSelect = byId<HTMLSelectElement>("api-function");
+const accessSelect = byId<HTMLSelectElement>("api-access");
 const requestIDInput = byId<HTMLInputElement>("request-id");
 const requestBody = byId<HTMLTextAreaElement>("request-body");
 const requestShapeHint = byId<HTMLElement>("request-shape-hint");
@@ -258,11 +261,23 @@ function buildCatalogItems(): CatalogItem[] {
         source: operation.origin ?? "",
         protected: operation.protected,
         acceptsOrgId: operation.protected,
+        apiKeyAllowed: false,
         rest: operation,
       };
     });
   }
-  return config.methods.map((method) => {
+  return config.methods.filter((method) => {
+    switch (accessSelect.value) {
+      case "public":
+        return method.public;
+      case "protected":
+        return !method.public;
+      case "api_key":
+        return !method.public && method.apiKeyAllowed;
+      default:
+        return true;
+    }
+  }).map((method) => {
     const classified = classifyName(method.name, "General");
     return {
       id: `api:${method.name}`,
@@ -276,6 +291,7 @@ function buildCatalogItems(): CatalogItem[] {
       source: method.source,
       protected: method.protected,
       acceptsOrgId: method.acceptsOrgId,
+      apiKeyAllowed: method.apiKeyAllowed,
     };
   });
 }
@@ -803,6 +819,9 @@ function renderApiDescription(item: CatalogItem | null): void {
       ? '<span class="description-badge is-protected">受保护 · 需令牌</span>'
       : '<span class="description-badge is-public">公开</span>',
   );
+  if (item.protected && item.apiKeyAllowed) {
+    badges.push('<span class="description-badge">API key 已授权</span>');
+  }
   if (item.acceptsOrgId && !item.rest) {
     badges.push('<span class="description-badge">按活动组织注入 org_id</span>');
   }
@@ -1866,6 +1885,7 @@ for (const tab of document.querySelectorAll<HTMLButtonElement>(".protocol-tab"))
   });
 }
 
+accessSelect.addEventListener("change", () => rebuildCatalog(selectedItem?.toolName));
 domainSelect.addEventListener("change", () => refreshGroups());
 groupSelect.addEventListener("change", () => refreshFunctions());
 functionSelect.addEventListener("change", applyCatalogSelection);

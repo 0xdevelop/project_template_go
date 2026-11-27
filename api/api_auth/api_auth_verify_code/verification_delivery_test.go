@@ -136,7 +136,10 @@ func TestGeneratedCodeAlwaysInfoLoggedAndEmailRemainsIndependent(t *testing.T) {
 		}, false, 0, true},
 		{"email_success", fixtureMailConfig, false, 1, true},
 		{"email_failure", fixtureMailConfig, true, 1, false},
-		{"email_incomplete", func() *api_auth_config.EmailConfig { c := fixtureMailConfig(); c.APIKey = ""; return c }, false, 0, false},
+		{"email_incomplete_logs_only", func() *api_auth_config.EmailConfig { c := fixtureMailConfig(); c.APIKey = ""; return c }, false, 0, true},
+		{"legacy_empty_email_logs_only", func() *api_auth_config.EmailConfig {
+			return &api_auth_config.EmailConfig{Provider: api_auth_config.EmailProviderResend}
+		}, false, 0, true},
 		{"email_unsupported_provider", func() *api_auth_config.EmailConfig { c := fixtureMailConfig(); c.Provider = "unsupported"; return c }, false, 0, false},
 		{"legacy_email_block_still_sends", func() *api_auth_config.EmailConfig { c := fixtureMailConfig(); c.Enabled = nil; return c }, false, 1, true},
 	}
@@ -377,11 +380,14 @@ func TestFinalProviderBoundaryRejectsDisabledAndInvalidPayloads(t *testing.T) {
 // This is real loopback HTTP through the production JSON-RPC Handler and API executor,
 // not a replacement handler. Only the external email provider and INFO sink are local seams.
 func TestIsolatedHTTPVerificationWorkflows(t *testing.T) {
-	for _, name := range []string{"no_email", "email_success", "email_failure"} {
+	for _, name := range []string{"no_email", "email_unconfigured", "email_success", "email_failure"} {
 		t.Run(name, func(t *testing.T) {
 			var mailConfig *api_auth_config.EmailConfig
 			if name != "no_email" {
 				mailConfig = fixtureMailConfig()
+			}
+			if name == "email_unconfigured" {
+				mailConfig.APIKey = ""
 			}
 			f := newDeliveryFixture(t, mailConfig)
 			if name == "email_failure" {

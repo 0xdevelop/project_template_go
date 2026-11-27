@@ -22,7 +22,8 @@ func TestAuthDeliveryConfigFileContracts(t *testing.T) {
 	}{
 		{"absent_email_default_no_mail", `{"verification":{"send_interval_seconds":60}}`, true},
 		{"explicit_false", `{"email":{"enabled":false}}`, true},
-		{"true_missing_credentials_rejected", `{"email":{"enabled":true,"provider":"resend"}}`, false},
+		{"true_missing_credentials_logs_only", `{"email":{"enabled":true,"provider":"resend"}}`, true},
+		{"legacy_empty_credentials_logs_only", `{"email":{"provider":"resend","api_key":"","from":""}}`, true},
 		{"legacy_email_retains_intent", `{"email":{"provider":"resend","api_key":"fixture-only","from":"sender@example.invalid","product_name":"fixture","verification_subject":"fixture"}}`, true},
 		{"old_interval", `{"verification":{"resend_interval_seconds":60}}`, true},
 		{"equal_aliases", `{"verification":{"send_interval_seconds":60,"resend_interval_seconds":60}}`, true},

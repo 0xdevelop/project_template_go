@@ -109,6 +109,13 @@ func writeMethodsDoc(methods []api_supported_methods.SupportedMethod, version st
 }
 
 func renderMethodBody(doc *strings.Builder, method *api_supported_methods.SupportedMethod) error {
+	if method.Public {
+		doc.WriteString("\n准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。\n")
+	} else if method.APIKeyAllowed {
+		doc.WriteString("\n准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。\n")
+	} else {
+		doc.WriteString("\n准入：受保护；本地账户形态支持 JWT，拒绝 API key。\n")
+	}
 	if method.Description != "" {
 		doc.WriteString("\n")
 		doc.WriteString(method.Description)
@@ -246,6 +253,7 @@ const unifiedCallBody = `
 准入门禁。HTTP 使用 ` + "`Authorization: Bearer <凭证>`" + ` 头，gRPC 使用 ` + "`authorization`" + ` metadata，
 WebSocket 可在握手请求头中携带。一次调用只带一种凭证。` + "`auth_type`" + ` 一次只开一种。
 ` + "`jwt`" + ` 时，` + "`key_`" + ` 前缀单独校验 API key（sha256 查库、对上用户、未吊销，不是 JWT 校验），其余校验自签 JWT 与未撤销 session；两边通过后才加载同一个 DB 用户。身份是 UserID，` + "`api_key_id`" + ` 只是 key 行句柄。
+JWT 可调用全部受保护方法；API key 还须注册项显式设置 ` + "`APIKeyAllowed: true`" + `，默认 false 拒绝。Public 方法完全跳过鉴权，也不读取该字段。此字段由后端注册设置，不是调用参数。
 ` + "`bridge`" + ` 时校验外部 IdP 令牌（本地公钥验签），身份是 claims，没有本地用户行；不接受本地 API key，也没有拿外部系统的 api key 在本地当凭证的入口。
 JSON-RPC、WebSocket、gRPC 也可显式使用兼容字段 ` + "`arguments.jwt_token`" + `（优先于头，门禁验证后移除，业务方法不可见；字段名不表示 API key 走 JWT 校验）。
 浏览器原生 WebSocket 无法自行设置 Authorization 头，使用该兼容字段。

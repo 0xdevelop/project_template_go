@@ -2,6 +2,8 @@
 
 Go 服务项目模版：统一 API 编排（JSON-RPC / MCP / WebSocket / gRPC 四协议同一调用链）+ Ability 装配 + MySQL/GORM + 开发测试台 + 文档生成，一条命令实例化为新项目。
 
+程序级 runtime 承载配置、监听、调度与容错，test_ui 与 frontend 调用已挂载的 API。详见[承载关系交互页](docs/template_runtime.html)与[配套说明](docs/template_runtime.md)。
+
 ## Quick Start
 
 **已有 `go.mod`**（module path 自动读取，无需传参）：
@@ -23,7 +25,7 @@ wget -qO- https://raw.githubusercontent.com/0xdevelop/project_template_go/main/n
 
 ## 验证码日志与可选邮件
 
-真实生成的验证码始终记录服务 INFO 日志；邮件由 `auth_cfg.email.enabled` 独立控制，并在配置加载和最终调用两层严格校验。日志不代表邮件成功或码有效；配置迁移、响应及失败处理见 [操作说明](docs/verification_delivery.md)。
+真实生成的验证码始终记录服务 INFO 日志；邮件未配置齐全时仅日志提示，不阻断启动。邮件开关、已填字段校验、响应与失败处理见 [操作说明](docs/verification_delivery.md)，日志不代表邮件成功或码有效。
 
 ## API 通信与执行架构
 

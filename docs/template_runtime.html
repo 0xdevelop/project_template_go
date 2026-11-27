@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>程序级 runtime 承载说明</title>
+<style>
+  :root {
+    --paper: #f4f0e6;
+    --ink: #1c1915;
+    --muted: #5c564c;
+    --line: #c9bfb0;
+    --runtime: #1d6b4a;
+    --caller: #0f6e86;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    font-size: 18px;
+    line-height: 1.7;
+  }
+  main { width: 100%; margin: 0; padding: 1.6rem 40px 3rem; }
+  h1 { margin: 0 0 0.45rem; font-size: 2rem; font-weight: 650; letter-spacing: 0; }
+  .lead { margin: 0 0 0.8rem; max-width: none; }
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.8rem;
+    margin: 0 0 1.2rem;
+    padding: 0 0 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .facts b { font-weight: 650; }
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.8fr);
+    gap: 36px;
+    align-items: stretch;
+  }
+  .zone-label {
+    margin: 0 0 10px;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  button.block {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 28px 30px 32px;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    background: transparent;
+    border: 2.5px solid var(--runtime);
+    cursor: pointer;
+  }
+  button.block.caller { border-color: var(--caller); }
+  button.block:hover, button.block:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 3px;
+  }
+  button.block h2 { margin: 0 0 8px; font-size: 2rem; font-weight: 650; line-height: 1.25; }
+  button.block .zone-note { margin: 0 0 18px; color: var(--muted); font-size: 17px; }
+  .faces, .callers {
+    display: grid;
+    gap: 16px;
+  }
+  .faces { grid-template-columns: 1fr 1fr; }
+  .callers { grid-template-columns: 1fr; }
+  .chip {
+    min-height: 132px;
+    padding: 16px 18px 18px;
+    border-top: 1px solid var(--line);
+  }
+  .chip h3 { margin: 0 0 6px; font-size: 1.55rem; font-weight: 650; line-height: 1.3; }
+  .chip p { margin: 0; font-size: 1.05rem; }
+  dialog.sheet {
+    width: 86vw;
+    height: 84vh;
+    max-width: 86vw;
+    max-height: 84vh;
+    margin: auto;
+    padding: 0;
+    border: 1px solid #b7ad9e;
+    color: var(--ink);
+    background: #f7f4ec;
+  }
+  dialog.sheet::backdrop { background: rgba(28, 25, 21, 0.42); }
+  .bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 28px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .bar h2 { margin: 0; font-size: 1.7rem; line-height: 1.3; }
+  .bar button {
+    flex: none;
+    font: inherit;
+    font-size: 16px;
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    background: transparent;
+    cursor: pointer;
+  }
+  .body {
+    height: calc(84vh - 78px);
+    overflow: auto;
+    padding: 8px 36px 40px;
+  }
+  .body .intro { margin: 16px 0 22px; color: var(--muted); max-width: none; }
+  .step { margin: 0 0 8px; padding: 14px 0 16px; border-bottom: 1px solid var(--line); }
+  .step h3 { margin: 0 0 6px; font-size: 1.28rem; font-weight: 650; }
+  .step p { margin: 0 0 8px; font-size: 1.05rem; }
+  .step p:last-child { margin-bottom: 0; }
+  table { width: max-content; max-width: 100%; border-collapse: collapse; margin: 8px 0 0; }
+  th, td { padding: 4px 18px 4px 0; text-align: left; border-bottom: 1px solid var(--line); font-weight: 400; }
+  th { font-weight: 650; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+  @media print {
+    .facts, dialog { display: none; }
+    button.block { border-color: #000; }
+    main { padding: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>程序级 runtime 承载说明</h1>
+  <p class="lead">这是承载关系说明，不是业务前端。业务前端是 <code>frontend</code> 按 <code>frontend_cfg.enabled</code> 提供的标准化页面，和这份说明不是同一个东西。</p>
+  <p class="facts">
+    <span><b>runtime</b> 选配置、监听、调度、容错</span>
+    <span><b>调用方</b> test_ui 多协议，frontend 一种协议</span>
+    <span><b>弹框</b> 86vw × 84vh，步骤全部展开</span>
+  </p>
+
+  <div class="stage">
+    <div>
+      <p class="zone-label">程序级 runtime</p>
+      <button class="block" type="button" data-open="runtime">
+        <h2>main 承载</h2>
+        <p class="zone-note">四面同时在。它们承载以后挂上的业务，不排成业务前面的步骤。</p>
+        <div class="faces">
+          <div class="chip">
+            <h3>选配置</h3>
+            <p>debug 用 example_files/config_local.yaml，其他用 conf/config.yaml。</p>
+          </div>
+          <div class="chip">
+            <h3>监听</h3>
+            <p>已启用的协议按自己的地址听。调用方不在这条里面。</p>
+          </div>
+          <div class="chip">
+            <h3>调度</h3>
+            <p>PolicyServicesStart 按空闲名额派发单次 Worker。</p>
+          </div>
+          <div class="chip">
+            <h3>容错</h3>
+            <p>捞回重启遗留、超时、取消和停机，都在这一面。</p>
+          </div>
+        </div>
+      </button>
+    </div>
+    <div>
+      <p class="zone-label">调用方 · 在 runtime 外面</p>
+      <button class="block caller" type="button" data-open="callers">
+        <h2>调用已挂上的 API</h2>
+        <p class="zone-note">enabled 只决定是否把这个面提供出来。不插进 runtime 四面。</p>
+        <div class="callers">
+          <div class="chip">
+            <h3>test_ui</h3>
+            <p>API 调试台。页面里可以选多种协议，调同一批已注册方法。</p>
+          </div>
+          <div class="chip">
+            <h3>frontend</h3>
+            <p>标准化页面。只走一种协议，不在页面里改选协议。</p>
+          </div>
+        </div>
+      </button>
+    </div>
+  </div>
+</main>
+
+<dialog class="sheet" id="runtime" aria-labelledby="runtime-title">
+  <div class="bar">
+    <h2 id="runtime-title">程序级 runtime</h2>
+    <button type="button" data-close>关闭</button>
+  </div>
+  <div class="body">
+    <p class="intro">下面四面全部展开。它们是 main 这一层的不同面，调用方不排在其中。</p>
+
+    <section class="step">
+      <h3>选配置</h3>
+      <p><code>setupApp</code> 读编译时注入的 <code>mRunMode</code>。值是 debug、test、release。空值按 debug。</p>
+      <p>main 随后改配置路径。debug 用 <code>./example_files/config_local.yaml</code>。test 与 release 用 <code>./conf/config.yaml</code>。路径相对进程当前目录。<code>setupApp</code> 里先拼的可执行目录路径会被这两条盖掉。</p>
+      <p><code>SyncConfigFile</code> 打印即将加载的路径。读失败或解析失败时记日志并 <code>os.Exit(1)</code>。目标文件不存在，或内容为空，先写入 <code>generateDefaultConfig</code> 再加载。生成的缺省只监听 <code>127.0.0.1</code>。对外部署改配置里的地址，代码不替它改。</p>
+      <p>邮件未配置齐全只日志提示，不阻断启动；验证码仍按原流程记录 INFO。</p>
+    </section>
+
+    <section class="step">
+      <h3>监听</h3>
+      <p>配置可用之后，先完成 <code>storage.OpenStorage</code> 和 <code>storage.GormAutoMigrate</code>，任一步失败都不启动 API。随后 <code>ApiConfig.Validate</code> 检查每一个已启用的协议。<code>bind_address</code> 为空，或 port 不在 1 到 65535，main 记日志并返回，四个协议都不启动。代码不补 <code>127.0.0.1</code>。</p>
+      <p>校验通过后 <code>StartAPIServices</code> 按段启动。段为 nil，或 <code>Enabled</code> 不为 true，该协议不听。JSON-RPC、MCP、WebSocket、gRPC 各用自己的地址。业务入口都是 <code>tools/call</code> 的 name 和 arguments，结果是 <code>CallToolResult</code>。不为某个 Ability 另开 URL、消息类型或 RPC。</p>
+      <p>JSON-RPC 只有 <code>POST /</code> 进入 <code>APIExecuter</code>。<code>GET /</code> 用 HomeHandler，<code>GET /robots.txt</code> 用 RobotsHandler，其余路径和方法也回 HomeHandler。MCP 用官方 Go SDK，协议版本 2026-07-28。WebSocket 把结果写回当前连接。gRPC 只有一个 <code>APIService.Call</code>。</p>
+      <p><code>APIExecuter</code> 只接受 <code>tools/call</code>，取出 name 和 arguments，非公开方法先走门禁，再调用已注册的 Execute。公开方法不读凭证；受保护方法的 JWT 沿原校验，API key 还须注册项 <code>APIKeyAllowed=true</code>，默认 false 拒绝。同步方法当场执行。注册项 <code>Async</code> 为 true 时只受理并返回 <code>task_id</code>，执行留给调度。</p>
+      <table>
+        <thead>
+          <tr><th>监听</th><th class="num">生成缺省</th><th>config_example.yaml</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>JSON-RPC</td><td class="num">127.0.0.1:7095</td><td>0.0.0.0:13001</td></tr>
+          <tr><td>MCP</td><td class="num">127.0.0.1:7096</td><td>0.0.0.0:13002</td></tr>
+          <tr><td>WebSocket</td><td class="num">127.0.0.1:7098</td><td>0.0.0.0:13004</td></tr>
+          <tr><td>gRPC</td><td class="num">127.0.0.1:7099</td><td>0.0.0.0:13005</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="step">
+      <h3>调度</h3>
+      <p>API 启动之后，main 调用 <code>PolicyServicesStart</code>。它拉起唯一维护循环，并返回停止函数。main 用 defer 在退出时取消循环并等待在途任务。</p>
+      <p>每一轮按 <code>runtime.NumCPU()</code> 乘以 <code>policy_cfg.workers_scaller</code>，再减去正在执行的 Worker 数，得到空闲名额。倍率缺省或不是正数时按 1。生成的缺省配置写 1。</p>
+      <p>每个 Worker 只跑一次 <code>ExecuteNextQueuedTask</code>，结束就释放。没有常驻空转的 Worker。长任务占着原来的名额，直到这次执行结束。认领成功后按任务上的方法名找回同一个注册项，把受理时存下的 arguments 交给 Execute。</p>
+      <p>两轮之间的间隔是 <code>policy_duration</code>。缺省为 10s；解析失败或非正数时回落 10s，并记警告。主库这一轮不可用，就等到下一轮，不在内存里假装有队列。</p>
+    </section>
+
+    <section class="step">
+      <h3>容错</h3>
+      <p>重启留下的 <code>running</code>、且不在本进程执行集合里的任务，由 <code>RequeueOrphanedTasks</code> 捞回排队区，再进入同一个 Execute。</p>
+      <p>整体超时开关 <code>task_lifecycle_timeout_enabled</code> 为 true 时，<code>ExpireTimedOutTasks</code> 处理超时任务。生成缺省是 false。同一类维护上一轮没结束，<code>runOnceAsync</code> 不重复派发。验证码清理走另一条，彼此不阻塞。</p>
+      <p><code>task.cancel</code> 只允许取消本用户的排队中任务，原子写入 <code>done/cancelled</code>；执行中、已结束或非属主均拒绝。停机时调度循环的 context 被取消，在途 Worker 结束后进程才继续往下收。</p>
+    </section>
+  </div>
+</dialog>
+
+<dialog class="sheet" id="callers" aria-labelledby="callers-title">
+  <div class="bar">
+    <h2 id="callers-title">调用方</h2>
+    <button type="button" data-close>关闭</button>
+  </div>
+  <div class="body">
+    <p class="intro">两个调用方全部展开。它们调用已经挂上的 API，不插进 runtime 的选配置、监听、调度、容错。</p>
+
+    <section class="step">
+      <h3>test_ui · 多协议 API 调试台</h3>
+      <p>main 只在运行模式不是 release 时调用 <code>LoadTestWeb</code>。release 不进入这个函数，配置里 enabled 为 true 也不会打开监听。函数内部再用 <code>sync.Once</code> 包住。</p>
+      <p><code>test_ui_cfg</code> 为空，或 <code>enabled</code> 不为 true，函数直接返回。启用时 <code>bind_address</code> 不能是空白，port 必须在 1 到 65535。不合法只记错误，不监听，也不因此停掉已经启动的 API。</p>
+      <p>页面里可以选 JSON-RPC、MCP、WebSocket、gRPC。本模板没有 REST 接口，REST 页签不显示。选中的协议经 <code>POST /api/proxy</code> 转到对应入口，调的是同一批已注册方法。调试台自己不实现这些方法。</p>
+      <p>静态页来自嵌入的 <code>test_ui/web</code>。另有 <code>GET /api/config</code> 和 <code>GET /docs_api</code>。生成缺省地址是 <code>127.0.0.1:7097</code>。示例文件是 <code>127.0.0.1:13003</code>。<code>enabled</code> 只决定是否把这个调试台提供出来。</p>
+    </section>
+
+    <section class="step">
+      <h3>frontend · 一种协议的标准化页面</h3>
+      <p>debug、test、release 都会调用 <code>FrontendServicesStart</code>。配置段缺失，或 <code>enabled</code> 为 false：不监听，进程继续等信号。embed 仍留在二进制里，关的是监听。</p>
+      <p>启用但地址为空，或 port 不在 1 到 65535：<code>Validate</code> 返回错误，main 因此 return，已启动的 API 和调度由 defer 停下。生成缺省地址是 <code>127.0.0.1:7100</code>。示例文件是 <code>127.0.0.1:13006</code>。真正监听以被选中的配置文件为准。</p>
+      <p>文件来自 <code>frontend/dist</code> 的 embed。只对存在的普通文件响应 GET 和 HEAD。这里没有多协议切换，也没有业务代理。模板页是这个调用方的壳，只承担一种协议的标准化页面；要在页面里改选协议，用 test_ui。</p>
+      <p>退出时若服务已启动，Shutdown 最多等 5 秒。<code>frontend_cfg.enabled</code> 只决定是否把这个页面提供出来。</p>
+    </section>
+  </div>
+</dialog>
+
+<script>
+  document.querySelectorAll("[data-open]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      document.getElementById(button.getAttribute("data-open")).showModal();
+    });
+  });
+  document.querySelectorAll("[data-close]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      button.closest("dialog").close();
+    });
+  });
+</script>
+</body>
+</html>

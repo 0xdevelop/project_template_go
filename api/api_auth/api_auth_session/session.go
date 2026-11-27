@@ -72,10 +72,11 @@ func LoadAPIMethods() {
 		Execute:     AuthLogout,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
-		Name:        MethodJWTTokenCheck,
-		Description: "按凭证种类分别检查当前自签 JWT 或 API key，返回用户身份与凭证来源；api_key_id 只是 key 行句柄",
-		InputSchema: api_auth_common.InputSchema(map[string]interface{}{}),
-		Execute:     AuthJWTTokenCheck,
+		Name:          MethodJWTTokenCheck,
+		Description:   "按凭证种类分别检查当前自签 JWT 或 API key，返回用户身份与凭证来源；api_key_id 只是 key 行句柄",
+		APIKeyAllowed: true,
+		InputSchema:   api_auth_common.InputSchema(map[string]interface{}{}),
+		Execute:       AuthJWTTokenCheck,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodJWTTokenRefresh,

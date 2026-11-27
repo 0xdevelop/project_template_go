@@ -17,6 +17,7 @@ import (
 func StartAPIServices(apiCfg *api_config.ApiConfig) {
 	ability.LoadAbilityAPIMethods()
 	api_config.CurrentApiCfg = apiCfg
+	api_config.CheckLocalNet()
 
 	// bridge 形态启动期预加载 IdP 公钥（fail-fast）：失败明示告警，
 	// 门禁保持 fail-closed 全拒，不静默降级。

@@ -12,6 +12,7 @@ import (
 
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_protocol"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_request"
@@ -209,7 +210,7 @@ func StartAPIServiceWithWebSocket(
 	webSocketCancel = cancel
 	webSocketHTTPServer = server
 	go func() {
-		gtbox_log.LogInfof("WebSocket server Run On  [ws://%s]", addr)
+		gtbox_log.LogInfof("WebSocket server %s", api_config.ApiListenServingLine("ws", apiCfgWebSocket.BindAddress, apiCfgWebSocket.Port, listener.Addr().String()))
 		if serveErr := server.Serve(listener); serveErr != nil &&
 			!errors.Is(serveErr, http.ErrServerClosed) {
 			gtbox_log.LogErrorf(

@@ -58,9 +58,10 @@ type apiMethod struct {
 	// Source 是来源标识；单一来源的服务留空，前端显示「本服务」。
 	Source string `json:"source"`
 	// Protected 为 true 表示受门禁（入参含 jwt_token）；Public 是注册表上的免门禁标记。
-	Protected    bool `json:"protected"`
-	AcceptsOrgID bool `json:"acceptsOrgId"`
-	Public       bool `json:"public"`
+	Protected     bool `json:"protected"`
+	AcceptsOrgID  bool `json:"acceptsOrgId"`
+	Public        bool `json:"public"`
+	APIKeyAllowed bool `json:"apiKeyAllowed"`
 }
 
 type webConfig struct {
@@ -126,7 +127,8 @@ func LoadTestWeb() {
 			return
 		}
 
-		listener, err := listen(uiCfg.BindAddress, uiCfg.Port)
+		addr := net.JoinHostPort(uiCfg.BindAddress, strconv.Itoa(uiCfg.Port))
+		listener, err := net.Listen("tcp4", addr)
 		if err != nil {
 			gtbox_log.LogErrorf("Failed to start test UI: %v", err)
 			return
@@ -162,7 +164,7 @@ func LoadTestWeb() {
 		}
 
 		go func() {
-			gtbox_log.LogInfof("Test UI Run On  [http://%s]", listener.Addr().String())
+			gtbox_log.LogInfof("Test UI %s", api_config.ApiListenServingLine("http", uiCfg.BindAddress, uiCfg.Port, listener.Addr().String()))
 			if serveErr := server.Serve(listener); serveErr != nil &&
 				!errors.Is(serveErr, http.ErrServerClosed) {
 				gtbox_log.LogErrorf("Test UI stopped unexpectedly: %v", serveErr)
@@ -217,7 +219,7 @@ func loadWebFS() (fs.FS, error) {
 }
 
 func listen(bindAddress string, port int) (net.Listener, error) {
-	return net.Listen("tcp", net.JoinHostPort(bindAddress, strconv.Itoa(port)))
+	return net.Listen("tcp4", net.JoinHostPort(bindAddress, strconv.Itoa(port)))
 }
 
 const apiDocSourcePlaceholder = "{{API_DOC_SOURCES}}"
@@ -312,12 +314,13 @@ func handleConfig(writer http.ResponseWriter, _ *http.Request) {
 
 	for _, method := range api_supported_methods.Methods() {
 		webCfg.Methods = append(webCfg.Methods, apiMethod{
-			Name:         method.Name,
-			Description:  method.Description,
-			InputSchema:  method.InputSchema,
-			Protected:    !method.Public,
-			AcceptsOrgID: false,
-			Public:       method.Public,
+			Name:          method.Name,
+			Description:   method.Description,
+			InputSchema:   method.InputSchema,
+			Protected:     !method.Public,
+			AcceptsOrgID:  false,
+			Public:        method.Public,
+			APIKeyAllowed: method.APIKeyAllowed,
 		})
 	}
 	webCfg.GRPCService = grpcServiceFullName()

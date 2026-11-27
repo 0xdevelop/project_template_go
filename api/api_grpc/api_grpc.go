@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
+	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/0xdevelop/project_template_go/api/api_executer"
 	"github.com/0xdevelop/project_template_go/api/api_grpc/api_config_grpc"
 	api_grpc_protobuf "github.com/0xdevelop/project_template_go/api/api_grpc/protobuf"
@@ -130,7 +131,7 @@ func StartAPIServiceWithGRPC(apiCfgGRPC *api_config_grpc.APIConfigGRPC) {
 	server := newGRPCServer()
 	grpcServer = server
 	go func() {
-		gtbox_log.LogInfof("gRPC server Run On  [tcp://%s]", addr)
+		gtbox_log.LogInfof("gRPC server %s", api_config.ApiListenServingLine("tcp", apiCfgGRPC.BindAddress, apiCfgGRPC.Port, listener.Addr().String()))
 		if serveErr := server.Serve(listener); serveErr != nil &&
 			!errors.Is(serveErr, grpc.ErrServerStopped) {
 			gtbox_log.LogErrorf(

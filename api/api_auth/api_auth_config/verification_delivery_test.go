@@ -14,9 +14,10 @@ func TestEmailEnablementAndLegacyCompatibility(t *testing.T) {
 		want bool
 	}{
 		{"no_auth", nil, false}, {"no_email", &AuthConfig{}, false},
-		{"legacy_email_block", &AuthConfig{Email: &EmailConfig{}}, true},
+		{"legacy_empty_email_block", &AuthConfig{Email: &EmailConfig{}}, false},
+		{"legacy_configured_email", &AuthConfig{Email: &EmailConfig{Provider: EmailProviderResend, APIKey: "test-only", From: "sender@example.invalid", ProductName: "fixture", VerificationSubject: "fixture"}}, true},
 		{"explicit_false_even_with_credentials", &AuthConfig{Email: &EmailConfig{Enabled: boolValue(false), APIKey: "test-only"}}, false},
-		{"explicit_true_missing_credentials", &AuthConfig{Email: &EmailConfig{Enabled: boolValue(true)}}, true},
+		{"explicit_true_missing_credentials", &AuthConfig{Email: &EmailConfig{Enabled: boolValue(true)}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			CurrentCfgAuth = tc.cfg

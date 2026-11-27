@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/0xdevelop/project_template_go/api/api_mcp/api_config_mcp"
 	"github.com/george012/gtbox/gtbox_log"
 )
@@ -62,7 +63,7 @@ func StartAPIServiceWithMCP(apiCfgMCP *api_config_mcp.APIConfigMCP) {
 	}
 	mcpHTTPServer = server
 	go func() {
-		gtbox_log.LogInfof("MCP server Run On  [http://%s]", addr)
+		gtbox_log.LogInfof("MCP server %s", api_config.ApiListenServingLine("http", apiCfgMCP.BindAddress, apiCfgMCP.Port, listener.Addr().String()))
 		if serveErr := server.Serve(listener); serveErr != nil &&
 			!errors.Is(serveErr, http.ErrServerClosed) {
 			gtbox_log.LogErrorf("MCP server stopped unexpectedly: %v", serveErr)

@@ -38,6 +38,8 @@ User 边界：绑定手机号保存在 `users.bind_phone`，未绑定为 `NULL`�
 
 # 2. 业务流转
 
+2026-11-27 用户确认：公开方法完全跳过鉴权。受保护方法中，JWT 沿原有校验访问；API key 还须注册项显式设置 `APIKeyAllowed: true`，默认 false 拒绝。许可与方法描述、实际 Execute 保存在同一个注册项，不另维护名单。它不限制 bridge 令牌；门禁关闭语义不变。
+
 验证码状态机（按规范化 `recipient` 键控、渠道无关）：
 
 ```mermaid
@@ -215,7 +217,7 @@ API key 记录中的 `created_at`、`last_used_at`、`revoked_at` 使用 UTC 毫
 - `storage` 包是唯一存储入口。查询和写入使用 `GormDB(ctx)`，多步写操作使用 `Transaction`；表结构以 Go model 为事实源经 `GormAutoMigrate` 同步，不得经另一连接池、原始 DDL、数据库 CLI 或外部脚本修改。
 - 多关系库并存时，Auth/User 经 `GormDB(ctx)` 使用 `storage_cfg.primary` 指定的主库；程序固定存储与 Ability 独立实例的边界见 [存储说明](storage.md)。
 - 邮件通道供应商由 auth 配置 `email.provider` 选择，当前仅支持 `resend`（Resend 官方 Go SDK）；配置进入 `config.FileConfig` 的 YAML/JSON/TOML 体系。
-- `email.enabled=false` 明确关闭邮件；已启用邮件的供应商、凭证、合法发件人、品牌和主题在加载与最终调用两层校验。旧块未写开关保留发送意图，缺失块则不发送；新通用冷却键及兼容规则见 [操作说明](verification_delivery.md)。
+- `email.enabled=false` 明确关闭邮件；邮件必填配置未齐全时仅日志提示，不阻断启动或验证码日志与消费流程，也不调用供应商。完整旧块未写开关保留发送意图；非法已填字段及已配置邮件的最终调用失败仍明确拒绝。新通用冷却键及兼容规则见 [操作说明](verification_delivery.md)。
 - Auth 配置校验失败输出字段级 warning 日志（指向 `auth_cfg.xxx.yyy` 完整键路径，敏感字段只报名不报值）。
 - API key、密码和 token 不得写日志、落入错误响应或以明文保存。验证码仅允许上述用户授权的服务 INFO 日志，不进入响应或明文数据库。
 
@@ -230,6 +232,7 @@ API key 记录中的 `created_at`、`last_used_at`、`revoked_at` 使用 UTC 毫
 - 已验证手机号密码登录成功。
 - JWT check、refresh rotation 和 logout 失效真实可用。
 - API key 经 Bearer 头可用；吊销、删除或所属用户不存在时拒绝，且不能签发/吊销/删除 key 或退出 session。
+- Public 方法忽略凭证和 APIKeyAllowed；JWT 可调用 APIKeyAllowed 为 false 或 true 的受保护方法；API key 仅能调用显式允许的方法，未允许的异步方法不得写入任务记录。
 - 并发 API key 调用不重复回写使用时间；中文名称边界与时间字段格式符合方法契约。
 - SMS 相关调用和手机号验证码登录返回 `API_METHOD_NOT_SUPPORTED`。
 - 四种协议的业务失败均使用正常协议状态和相同业务返回值。
@@ -267,6 +270,7 @@ API key 记录中的 `created_at`、`last_used_at`、`revoked_at` 使用 UTC 毫
 - [ ] 🟡 DONE — `auth.login.email`、`auth.login.phone` 登录语义已实现（login.phone 待手机号绑定实现后验收）。
 - [ ] 🟡 DONE — `auth.jwt_token.check/refresh` 与 `auth.logout` 已接入。
 - [ ] 🟡 DONE — 用户级 API key：`auth.api_key.issue/list/revoke/delete`；门禁对 `Authorization: Bearer` 与 `arguments.jwt_token` 按 `key_` 前缀分流，库中只存 sha256，吊销或删除后立即拒绝。
+- [ ] 🟡 DONE — API key 逐方法授权：注册项 APIKeyAllowed、统一执行入口拒绝分支、测试台标签与分类、生成方法文档已联动；真实部署验收单独记录。
 - [ ] 🟡 DONE — JWT 与 API key 校验分开，通过后才共用用户查询和身份写入。身份是 UserID；`api_key_id` 是行句柄，不是调用方身份。API key 使用时间条件更新、Unicode 名称计数和 UTC 毫秒字符串已实现，真实 App 联调单独验收。
 - [ ] 🟡 DONE — Auth 业务失败已复用 API 通用错误码，并完成四协议 `CallToolResult` 验证。
 - [ ] 🟡 DONE — 可选绑定手机号字段为 `users.bind_phone`。

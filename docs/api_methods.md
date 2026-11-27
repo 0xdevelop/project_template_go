@@ -1,4 +1,4 @@
-> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.16，共 19 个方法），禁止手改；新增方法后重新执行生成。
+> 本文件由 `gen_api_docs.sh` 从方法注册表生成（v0.0.16，共 21 个方法），禁止手改；新增方法后重新执行生成。
 
 # 1. 统一调用方式
 
@@ -31,6 +31,7 @@
 准入门禁。HTTP 使用 `Authorization: Bearer <凭证>` 头，gRPC 使用 `authorization` metadata，
 WebSocket 可在握手请求头中携带。一次调用只带一种凭证。`auth_type` 一次只开一种。
 `jwt` 时，`key_` 前缀单独校验 API key（sha256 查库、对上用户、未吊销，不是 JWT 校验），其余校验自签 JWT 与未撤销 session；两边通过后才加载同一个 DB 用户。身份是 UserID，`api_key_id` 只是 key 行句柄。
+JWT 可调用全部受保护方法；API key 还须注册项显式设置 `APIKeyAllowed: true`，默认 false 拒绝。Public 方法完全跳过鉴权，也不读取该字段。此字段由后端注册设置，不是调用参数。
 `bridge` 时校验外部 IdP 令牌（本地公钥验签），身份是 claims，没有本地用户行；不接受本地 API key，也没有拿外部系统的 api key 在本地当凭证的入口。
 JSON-RPC、WebSocket、gRPC 也可显式使用兼容字段 `arguments.jwt_token`（优先于头，门禁验证后移除，业务方法不可见；字段名不表示 API key 走 JWT 校验）。
 浏览器原生 WebSocket 无法自行设置 Authorization 头，使用该兼容字段。
@@ -54,6 +55,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 # 3. test
 
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
+
 检查统一 API 调用链是否可用
 
 `arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
@@ -68,6 +71,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 # 4. Auth
 
 ## 4.1. auth.verify_code.send.email
+
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
 
 生成邮箱验证码并记录 INFO 日志；邮件可选
 
@@ -100,6 +105,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.2. auth.verify_code.check.email
+
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
 
 检查邮箱验证码
 
@@ -139,6 +146,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 4.3. auth.verify_code.send.sms
 
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
+
 发送短信验证码（暂不支持）
 
 `arguments` 传参举例（仅含必填字段）：
@@ -168,6 +177,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.4. auth.verify_code.check.sms
+
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
 
 检查短信验证码（暂不支持）
 
@@ -204,6 +215,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.5. auth.register
+
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
 
 使用邮箱验证码注册账户；user_name 为注册必填主标识
 
@@ -257,6 +270,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 4.6. auth.login.email
 
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
+
 使用邮箱登录
 
 `arguments` 传参举例（仅含必填字段）：
@@ -303,6 +318,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.7. auth.login.phone
+
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
 
 使用手机号登录
 
@@ -354,6 +371,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 4.8. auth.logout
 
+准入：受保护；本地账户形态支持 JWT，拒绝 API key。
+
 撤销当前登录状态
 
 `arguments` 传参举例（仅含必填字段）：
@@ -371,7 +390,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -382,6 +401,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.9. auth.jwt_token.check
+
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
 
 按凭证种类分别检查当前自签 JWT 或 API key，返回用户身份与凭证来源；api_key_id 只是 key 行句柄
 
@@ -400,7 +421,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -411,6 +432,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.10. auth.jwt_token.refresh
+
+准入：公开，不鉴权，不读取 JWT 或 `APIKeyAllowed`。
 
 轮换 refresh token 并签发新 JWT token
 
@@ -443,6 +466,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 4.11. auth.api_key.issue
 
+准入：受保护；本地账户形态支持 JWT，拒绝 API key。
+
 签发当前用户的 API key，明文只返回一次；仅登录 session 可签发，key 不能再签发。
 
 `arguments` 传参举例（仅含必填字段）：
@@ -462,7 +487,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -482,6 +507,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 4.12. auth.api_key.list
 
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
+
 列出当前用户的 API key，不含明文与哈希；时间字段为 UTC 毫秒字符串。
 
 `arguments` 传参举例（仅含必填字段）：
@@ -499,7 +526,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -510,6 +537,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.13. auth.api_key.revoke
+
+准入：受保护；本地账户形态支持 JWT，拒绝 API key。
 
 吊销一把 API key；仅登录 session 可吊销，且只能吊销自己的 key。
 
@@ -536,7 +565,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
       "type": "string"
     },
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -550,6 +579,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 4.14. auth.api_key.delete
+
+准入：受保护；本地账户形态支持 JWT，拒绝 API key。
 
 删除一把已吊销的 API key；未吊销拒绝删除。仅登录 session 可删自己的 key。
 
@@ -576,7 +607,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
       "type": "string"
     },
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -592,6 +623,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 # 5. User
 
 ## 5.1. user.nickname.change
+
+准入：受保护；本地账户形态支持 JWT，拒绝 API key。
 
 修改当前用户昵称
 
@@ -612,7 +645,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -634,6 +667,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 6.1. task.get
 
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
+
 查询我的异步任务状态、步进（steps/current_step）与结果
 
 `arguments` 传参举例（仅含必填字段）：
@@ -653,7 +688,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -673,6 +708,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 
 ## 6.2. task.list
 
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
+
 列出我的异步任务（新→旧，最多 50 条）
 
 `arguments` 传参举例（仅含必填字段）：
@@ -690,7 +727,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -701,6 +738,8 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
 ```
 
 ## 6.3. task.cancel
+
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
 
 取消我的排队中任务（执行中任务不可取消）
 
@@ -721,7 +760,7 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   "additionalProperties": false,
   "properties": {
     "jwt_token": {
-      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
       "maxLength": 8192,
       "minLength": 1,
       "type": "string"
@@ -734,6 +773,99 @@ MCP 凭证使用 HTTP 头，`tools/list` 只暴露业务入参，不含 `jwt_tok
   },
   "required": [
     "task_id"
+  ],
+  "type": "object"
+}
+```
+
+# 7. Resource
+
+## 7.1. resource.status
+
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
+
+查询配置资源集合及最后下载字节快照（不是推理进度）；不下载。任务生命周期仍以 task.get 为准。
+
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "set": "<set>"
+}
+```
+
+可选字段：`jwt_token`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "jwt_token": {
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    },
+    "set": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "set"
+  ],
+  "type": "object"
+}
+```
+
+## 7.2. resource.prepare
+
+准入：受保护；本地账户形态支持 JWT 和 API key，分别校验。
+
+明确确认 status 返回的指纹，仅准备所指配置集合；沿用持久异步任务，不启动推理。
+
+异步方法：受理后返回 `task_id`，进度与结果经任务查询方法读取。
+
+`arguments` 传参举例（仅含必填字段）：
+
+```json
+{
+  "confirmation_token": "<confirmation_token>",
+  "set": "<set>"
+}
+```
+
+可选字段：`jwt_token`。
+
+`arguments` JSON Schema（约束说明，非请求体；`required` 数组 = 必填字段清单）：
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "confirmation_token": {
+      "maxLength": 64,
+      "minLength": 64,
+      "type": "string"
+    },
+    "jwt_token": {
+      "description": "一次只带一种凭证：自签 JWT，或 key_ 前缀 API key（校验不同，API key 仅限已授权方法）。已带 Authorization: Bearer 时省略；显式传入优先于头。",
+      "maxLength": 8192,
+      "minLength": 1,
+      "type": "string"
+    },
+    "set": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "set",
+    "confirmation_token"
   ],
   "type": "object"
 }

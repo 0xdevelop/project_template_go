@@ -82,8 +82,9 @@ func inFlightTaskIDs() []string {
 
 func LoadAPIMethods() {
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
-		Name:        MethodTaskGet,
-		Description: "查询我的异步任务状态、步进（steps/current_step）与结果",
+		Name:          MethodTaskGet,
+		Description:   "查询我的异步任务状态、步进（steps/current_step）与结果",
+		APIKeyAllowed: true,
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
 				"task_id": api_auth_common.StringSchema("", 36, 36),
@@ -93,16 +94,18 @@ func LoadAPIMethods() {
 		Execute: TaskGet,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
-		Name:        MethodTaskList,
-		Description: "列出我的异步任务（新→旧，最多 50 条）",
+		Name:          MethodTaskList,
+		Description:   "列出我的异步任务（新→旧，最多 50 条）",
+		APIKeyAllowed: true,
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{},
 		),
 		Execute: TaskList,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
-		Name:        MethodTaskCancel,
-		Description: "取消我的排队中任务（执行中任务不可取消）",
+		Name:          MethodTaskCancel,
+		Description:   "取消我的排队中任务（执行中任务不可取消）",
+		APIKeyAllowed: true,
 		InputSchema: api_auth_common.InputSchema(
 			map[string]interface{}{
 				"task_id": api_auth_common.StringSchema("", 36, 36),

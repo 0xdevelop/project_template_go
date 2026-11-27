@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/0xdevelop/project_template_go/frontend/frontend_config"
 	"github.com/george012/gtbox/gtbox_log"
 )
@@ -36,7 +37,7 @@ func FrontendServicesStart(cfg *frontend_config.FrontendConfig) (*http.Server, e
 	if err != nil {
 		return nil, fmt.Errorf("load frontend assets: %w", err)
 	}
-	listener, err := net.Listen("tcp", net.JoinHostPort(cfg.BindAddress, strconv.Itoa(cfg.Port)))
+	listener, err := net.Listen("tcp4", net.JoinHostPort(cfg.BindAddress, strconv.Itoa(cfg.Port)))
 	if err != nil {
 		return nil, fmt.Errorf("listen frontend: %w", err)
 	}
@@ -49,7 +50,7 @@ func FrontendServicesStart(cfg *frontend_config.FrontendConfig) (*http.Server, e
 		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
-		gtbox_log.LogInfof("Frontend Run On  [http://%s]", server.Addr)
+		gtbox_log.LogInfof("Frontend %s", api_config.ApiListenServingLine("http", cfg.BindAddress, cfg.Port, listener.Addr().String()))
 		if serveErr := server.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			gtbox_log.LogErrorf("frontend stopped unexpectedly: %v", serveErr)
 		}

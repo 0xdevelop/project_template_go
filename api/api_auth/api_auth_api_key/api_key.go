@@ -42,10 +42,11 @@ func LoadAPIMethods() {
 		Execute: AuthAPIKeyIssue,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
-		Name:        MethodAPIKeyList,
-		Description: "列出当前用户的 API key，不含明文与哈希；时间字段为 UTC 毫秒字符串。",
-		InputSchema: api_auth_common.InputSchema(map[string]interface{}{}),
-		Execute:     AuthAPIKeyList,
+		Name:          MethodAPIKeyList,
+		Description:   "列出当前用户的 API key，不含明文与哈希；时间字段为 UTC 毫秒字符串。",
+		APIKeyAllowed: true,
+		InputSchema:   api_auth_common.InputSchema(map[string]interface{}{}),
+		Execute:       AuthAPIKeyList,
 	})
 	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
 		Name:        MethodAPIKeyRevoke,

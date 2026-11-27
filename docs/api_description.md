@@ -105,22 +105,29 @@ gRPC 的 `.proto` 源只放在 `api/api_grpc/proto`，生成的 `.pb.go` 只放�
 
 ```go
 type SupportedMethod struct {
-    Name        string
-    Description string
-    InputSchema map[string]interface{}
-    Async       bool
-    Public      bool
-    Execute     func(context.Context, interface{}) (interface{}, error)
+    Name          string
+    Description   string
+    InputSchema   map[string]interface{}
+    Async         bool
+    Public        bool
+    APIKeyAllowed bool
+    Execute       func(context.Context, interface{}) (interface{}, error)
 }
 ```
 
 `Public` 零值为受保护：`APIExecuter` 在 Execute 前经 `api_auth_session.AuthenticateRequest` 验证凭证。协议 Adapter 从 HTTP `Authorization: Bearer` 头（gRPC 为 `authorization` metadata，WebSocket 为握手头）取值经 `api_auth_session.WithBearerToken` 写入 context。JSON-RPC、WebSocket、gRPC 也支持兼容字段 `arguments.jwt_token`（非空时优先于头）；浏览器原生 WebSocket 使用该字段。调用方每次只带一种凭证，也只选一个携带位置（头或兼容字段）。MCP 对外 schema 用 `InputSchemaWithoutGateToken()` 去掉 `jwt_token`，凭证走标准 HTTP 头。
 
+2026-11-27 用户确认的准入规则：
+
+- `Public=true`：不鉴权，不读取 JWT，也不读取 `APIKeyAllowed`。
+- `Public=false`：JWT 沿原有校验通过后可调用全部受保护方法；API key 校验通过后，还须该注册项 `APIKeyAllowed=true`，默认 false 拒绝。拒绝发生在 `Execute` 或异步任务受理之前。
+- 两个字段都由后端注册设置，不是调用参数。`APIKeyAllowed` 不限制 bridge 令牌；`auth_cfg.enabled=false` 仍沿用关闭门禁且不提供身份的原有语义。
+
 `auth_type` 一次只开一种。`jwt`：`key_` 前缀单独校验 API key（明文 sha256 查库、对上用户、未吊销，不是 JWT 校验），其余校验自签 JWT 和未撤销 session；两边都通过之后才共路，加载同一个 DB 用户再进 Execute，身份是 UserID。`api_key_id` 是签发时另生成的 UUID 行句柄，不是调用方身份。签发、吊销、删除 API key 只能走已登录 session。`bridge`：外部 IdP 令牌本地公钥验签，身份是 claims，没有本地用户行；不接受本地 `api_key`，也没有拿外部系统的 api key 在本地当凭证的入口。门禁处理后 `jwt_token` 从 `arguments` 移除。完整生命周期见 [`ability_auth.md`](ability_auth.md)。
 
 `InputSchema` 只用于 MCP `tools/list` 描述 `arguments`，不是 Ability 的业务执行参数。
 
-`Async` 是后端注册方法时设置的执行语义，不属于前端参数，也不进入 `InputSchema`。默认值 `false` 同步调用 `Execute`；长任务设为 `true` 后由统一受理将输入写入 MySQL 持久化排队区并立即返回 `task_id`，Policy 再按空闲执行名额认领任务，并按方法名查回同一个 `Execute`。调用方通过 `task.get` / `task.list` 查询状态与结果，排队中任务可通过 `task.cancel` 取消。
+`Async` 是后端注册方法时设置的执行语义，不属于前端参数，也不进入 `InputSchema`。默认值 `false` 同步调用 `Execute`；长任务设为 `true` 后由统一受理将输入写入主关系库持久化排队区并立即返回 `task_id`，Policy 再按空闲执行名额认领任务，并按方法名查回同一个 `Execute`。调用方通过 `task.get` / `task.list` 查询状态与结果，排队中任务可通过 `task.cancel` 取消。
 
 `APIExecuter` 是唯一执行入口，但不维护业务 `switch`。它统一从外层 `method`、`params` 提取业务方法名和 `arguments`，完成可选编解码后，从有序方法目录取得注册项并调用该项的 `Execute`。方法描述和执行函数不得再维护两份映射。
 

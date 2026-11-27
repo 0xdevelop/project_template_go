@@ -46,6 +46,11 @@ func APIExecuter(ctx context.Context, method string, params interface{}, encrypt
 			if ctx, err = api_auth_session.AuthenticateRequest(ctx, abilityParams); err != nil {
 				return finish(nil, err, encryptionKey)
 			}
+			// 来源是 api_key 且该方法未允许时拒绝。JWT 与无本地身份不读 APIKeyAllowed。
+			caller, callerErr := api_auth_session.AuthenticatedCaller(ctx)
+			if callerErr == nil && caller.AuthSource == api_auth_session.AuthSourceAPIKey && !supportedMethod.APIKeyAllowed {
+				return finish(nil, api_error_code.ErrPermissionDenied, encryptionKey)
+			}
 		}
 		// 门禁参数生命周期到此终结（开关关闭时同样移除）：业务 Execute 与 Async 落库只见业务参数
 		delete(abilityParams, "jwt_token")

@@ -11,14 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xdevelop/project_template_go/ability/ability_task/ability_task_model"
 	"github.com/0xdevelop/project_template_go/ability/ability_user"
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_config"
 	authModel "github.com/0xdevelop/project_template_go/api/api_auth/api_auth_model"
 	"github.com/0xdevelop/project_template_go/api/api_auth/api_auth_session"
 	"github.com/0xdevelop/project_template_go/api/api_error_code"
+	"github.com/0xdevelop/project_template_go/api/api_executer"
+	"github.com/0xdevelop/project_template_go/api/api_supported_methods"
 	"github.com/0xdevelop/project_template_go/config"
 	"github.com/0xdevelop/project_template_go/storage"
 	"github.com/0xdevelop/project_template_go/storage/storage_config"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"gorm.io/gorm"
 )
 
@@ -193,6 +197,143 @@ func TestAPIKeyLifecycleThroughTheGate(t *testing.T) {
 		api_auth_session.WithBearerToken(context.Background(), plaintext), map[string]interface{}{},
 	); !errors.Is(err, api_error_code.ErrPermissionDenied) {
 		t.Fatalf("deleted key must be denied, got %v", err)
+	}
+}
+
+func TestAPIKeyMethodAuthorizationThroughExecuter(t *testing.T) {
+	setupAuthTestDB(t)
+	db, err := storage.GormDB(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := ability_user.Create(db, "api_key_gate_user", "gate@example.com", testPassword, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	jwtCtx := sessionContext(t, "gate@example.com")
+	issued, err := AuthAPIKeyIssue(jwtCtx, map[string]interface{}{"name": "gate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := issued.(map[string]interface{})["api_key"].(string)
+	keyCtx := api_auth_session.WithBearerToken(context.Background(), "Bearer "+key)
+	invalidCtx := api_auth_session.WithBearerToken(context.Background(), "Bearer key_invalid")
+	api_supported_methods.SupportedMethodsSetup()
+	t.Cleanup(api_supported_methods.SupportedMethodsSetup)
+	executions := 0
+	for _, method := range []*api_supported_methods.SupportedMethod{
+		{Name: "api_key_gate.public", Public: true, APIKeyAllowed: false},
+		{Name: "api_key_gate.public_allowed", Public: true, APIKeyAllowed: true},
+		{Name: "api_key_gate.jwt"},
+		{Name: "api_key_gate.allowed", Public: false, APIKeyAllowed: true},
+		{Name: "api_key_gate.async_denied", Public: false, APIKeyAllowed: false, Async: true},
+		{Name: "api_key_gate.async_allowed", Public: false, APIKeyAllowed: true, Async: true},
+	} {
+		method.InputSchema = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
+		method.Execute = func(ctx context.Context, input interface{}) (interface{}, error) {
+			executions++
+			if !method.Public {
+				if _, exists := input.(map[string]interface{})["jwt_token"]; exists {
+					return nil, errors.New("protected Execute received a credential")
+				}
+				caller, callerErr := api_auth_session.AuthenticatedCaller(ctx)
+				if callerErr != nil || caller.UserID != user.UserID {
+					return nil, errors.New("protected Execute did not receive the authenticated user")
+				}
+			}
+			return "executed", nil
+		}
+		api_supported_methods.AddMethod(method)
+	}
+	for _, test := range []struct {
+		name    string
+		ctx     context.Context
+		method  string
+		allowed bool
+	}{
+		{"public ignores invalid key", invalidCtx, "api_key_gate.public", true},
+		{"public ignores APIKeyAllowed", invalidCtx, "api_key_gate.public_allowed", true},
+		{"public needs no credential", context.Background(), "api_key_gate.public", true},
+		{"JWT accepts default false", jwtCtx, "api_key_gate.jwt", true},
+		{"JWT accepts true", jwtCtx, "api_key_gate.allowed", true},
+		{"key rejects default false", keyCtx, "api_key_gate.jwt", false},
+		{"key accepts true", keyCtx, "api_key_gate.allowed", true},
+		{"true still verifies key", invalidCtx, "api_key_gate.allowed", false},
+		{"true still requires credential", context.Background(), "api_key_gate.allowed", false},
+		{"async denied before acceptance", keyCtx, "api_key_gate.async_denied", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := executions
+			result, callErr := api_executer.APIExecuter(test.ctx, "tools/call", map[string]interface{}{
+				"name": test.method, "arguments": map[string]interface{}{},
+			}, "")
+			if callErr != nil || result == nil || result.IsError == test.allowed {
+				t.Fatalf("allowed=%v result=%v err=%v", test.allowed, result, callErr)
+			}
+			if !test.allowed && executions != before {
+				t.Fatal("denied call reached Execute")
+			}
+			if test.allowed && executions != before+1 {
+				t.Fatal("allowed synchronous call did not execute once")
+			}
+		})
+	}
+	var tasks int64
+	if err = db.Model(&ability_task_model.AsyncTask{}).Count(&tasks).Error; err != nil || tasks != 0 {
+		t.Fatalf("denied async call created tasks: count=%d err=%v", tasks, err)
+	}
+	beforeAccept := executions
+	result, err := api_executer.APIExecuter(context.Background(), "tools/call", map[string]interface{}{
+		"name": "api_key_gate.async_allowed", "arguments": map[string]interface{}{"jwt_token": key},
+	}, "")
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("allowed async acceptance failed: result=%v err=%v", result, err)
+	}
+	if executions != beforeAccept || len(result.Content) != 1 {
+		t.Fatal("async acceptance executed business work or returned no receipt")
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatal("async acceptance did not return a JSON receipt")
+	}
+	var accepted struct {
+		TaskID string `json:"task_id"`
+	}
+	if err = json.Unmarshal([]byte(text.Text), &accepted); err != nil || accepted.TaskID == "" {
+		t.Fatal("async acceptance returned no task_id")
+	}
+	var task ability_task_model.AsyncTask
+	if err = db.Take(&task).Error; err != nil || task.TaskID != accepted.TaskID || task.UserID == nil || *task.UserID != user.UserID || task.InputPayload != "{}" {
+		t.Fatalf("async record identity or credential stripping failed: err=%v", err)
+	}
+	if _, err = AuthAPIKeyRevoke(jwtCtx, map[string]interface{}{"api_key_id": issued.(map[string]interface{})["record"].(*APIKeyRecord).APIKeyID}); err != nil {
+		t.Fatal(err)
+	}
+	result, err = api_executer.APIExecuter(keyCtx, "tools/call", map[string]interface{}{
+		"name": "api_key_gate.allowed", "arguments": map[string]interface{}{},
+	}, "")
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("revoked key reached an allowed method: err=%v", err)
+	}
+	disabled := false
+	api_auth_config.CurrentCfgAuth.Enabled = &disabled
+	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{
+		Name: "api_key_gate.disabled", Public: false, APIKeyAllowed: false,
+		InputSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+		Execute: func(ctx context.Context, input interface{}) (interface{}, error) {
+			_, callerErr := api_auth_session.AuthenticatedCaller(ctx)
+			_, hasToken := input.(map[string]interface{})["jwt_token"]
+			if callerErr == nil || hasToken {
+				return nil, errors.New("disabled gate fabricated identity or retained credential")
+			}
+			return "executed", nil
+		},
+	})
+	result, err = api_executer.APIExecuter(context.Background(), "tools/call", map[string]interface{}{
+		"name": "api_key_gate.disabled", "arguments": map[string]interface{}{"jwt_token": "invalid"},
+	}, "")
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("disabled gate failed: err=%v", err)
 	}
 }
 

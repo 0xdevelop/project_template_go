@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/0xdevelop/project_template_go/api/api_common"
+	"github.com/0xdevelop/project_template_go/api/api_config"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_jsonRPC_handler"
 	"github.com/george012/gtbox/gtbox_log"
@@ -38,15 +39,20 @@ func StartAPIServiceWithJsonRPC(apiCfgJsonRPC *api_config_jsonRPC.APIConfigJsonR
 	muxRouter.MethodNotAllowedHandler = http.HandlerFunc(api_common.HomeHandler)
 
 	addr := net.JoinHostPort(apiCfgJsonRPC.BindAddress, strconv.Itoa(apiCfgJsonRPC.Port))
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		gtbox_log.LogErrorf("Failed to start HTTP server: %v\n", err)
+		return
+	}
 
 	httpServer = &http.Server{
-		Addr:    addr,
+		Addr:    listener.Addr().String(),
 		Handler: muxRouter,
 	}
 	go func() {
-		gtbox_log.LogInfof("API server Run On  [http://%s]", addr)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			gtbox_log.LogErrorf("Failed to start HTTP server: %v\n", err)
+		gtbox_log.LogInfof("API server %s", api_config.ApiListenServingLine("http", apiCfgJsonRPC.BindAddress, apiCfgJsonRPC.Port, listener.Addr().String()))
+		if serveErr := httpServer.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			gtbox_log.LogErrorf("Failed to start HTTP server: %v\n", serveErr)
 		}
 	}()
 

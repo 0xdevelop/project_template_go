@@ -47,7 +47,7 @@ type BridgeConfig struct {
 }
 
 type EmailConfig struct {
-	Enabled             *bool  `yaml:"enabled,omitempty" json:"enabled,omitempty" toml:"enabled,omitempty" comment:"邮件发送开关；无 email 块默认 false；旧 email 块未写 enabled 保持 true。验证码 INFO 日志不受此开关影响"`
+	Enabled             *bool  `yaml:"enabled,omitempty" json:"enabled,omitempty" toml:"enabled,omitempty" comment:"邮件发送开关；false 不发送；配置未齐全时仅日志提示；完整配置未写开关时发送。验证码 INFO 日志不受此开关影响"`
 	Provider            string `yaml:"provider" json:"provider" toml:"provider"`
 	APIKey              string `yaml:"api_key" json:"api_key" toml:"api_key"`
 	From                string `yaml:"from" json:"from" toml:"from"`
@@ -145,16 +145,27 @@ func invalidConfigField(configKeyPath string, reason string) {
 	gtbox_log.LogWarnf("auth config invalid: %s %s", configKeyPath, reason)
 }
 
-// EmailDeliveryEnabled is independent from mandatory verification-code INFO logging.
-// Preserve existing email blocks' behavior; never infer disabling from a missing API key.
+// EmailDeliveryEnabled 仅在邮件未关闭且必填配置齐全时允许发送。
 func EmailDeliveryEnabled() bool {
 	if CurrentCfgAuth == nil || CurrentCfgAuth.Email == nil {
 		return false
 	}
-	if CurrentCfgAuth.Email.Enabled == nil {
-		return true
+	if CurrentCfgAuth.Email.Enabled != nil && !*CurrentCfgAuth.Email.Enabled {
+		return false
 	}
-	return *CurrentCfgAuth.Email.Enabled
+	return emailDeliveryMissingField(CurrentCfgAuth.Email) == ""
+}
+
+func emailDeliveryMissingField(config *EmailConfig) string {
+	for _, field := range []struct{ name, value string }{
+		{"provider", config.Provider}, {"api_key", config.APIKey}, {"from", config.From},
+		{"product_name", config.ProductName}, {"verification_subject", config.VerificationSubject},
+	} {
+		if strings.TrimSpace(field.value) == "" {
+			return "auth_cfg.email." + field.name
+		}
+	}
+	return ""
 }
 
 // ValidateVerificationAliases checks migration conflicts without requiring an email provider at startup.
@@ -185,10 +196,10 @@ func CurrentEmailConfig() (*EmailConfig, error) {
 	return &config, nil
 }
 
-// ValidateEmailSelection rejects an invalid selected email route before publishing a file configuration.
-// An explicit false permits empty credentials; a legacy block still means email enabled.
+// ValidateEmailSelection 拒绝非法字段；未配齐邮件时仅提示，不阻断配置加载。
 func ValidateEmailSelection(cfg *AuthConfig) error {
 	if cfg == nil || cfg.Email == nil {
+		gtbox_log.LogInfof("auth email delivery not configured; verification codes remain available in service INFO logs")
 		return nil
 	}
 	email := cfg.Email
@@ -199,6 +210,10 @@ func ValidateEmailSelection(cfg *AuthConfig) error {
 		return err
 	}
 	if email.Enabled != nil && !*email.Enabled {
+		return nil
+	}
+	if missingField := emailDeliveryMissingField(email); missingField != "" {
+		gtbox_log.LogWarnf("auth email delivery not configured: %s is empty; email will not be sent, verification codes remain available in service INFO logs", missingField)
 		return nil
 	}
 	return ValidateEmailConfig(email)
@@ -215,12 +230,8 @@ func ValidateEmailConfig(config *EmailConfig) error {
 	if config.Provider != EmailProviderResend {
 		return errors.New("auth_cfg.email.provider is unsupported")
 	}
-	for _, field := range []struct{ name, value string }{
-		{"api_key", config.APIKey}, {"from", config.From}, {"product_name", config.ProductName}, {"verification_subject", config.VerificationSubject},
-	} {
-		if strings.TrimSpace(field.value) == "" {
-			return errors.New("auth_cfg.email." + field.name + " is required for email delivery")
-		}
+	if missingField := emailDeliveryMissingField(config); missingField != "" {
+		return errors.New(missingField + " is required for email delivery")
 	}
 	return validateEmailFieldSyntax(config)
 }

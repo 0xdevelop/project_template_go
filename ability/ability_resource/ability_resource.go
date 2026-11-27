@@ -49,6 +49,6 @@ func Prepare(ctx context.Context, input interface{}) (interface{}, error) {
 	return c.Prepare(ctx, id, token)
 }
 func LoadAPIMethods() {
-	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{Name: "resource.status", Description: "查询配置资源集合及最后下载字节快照（不是推理进度）；不下载。任务生命周期仍以 task.get 为准。", InputSchema: api_auth_common.InputSchema(map[string]interface{}{"set": api_auth_common.StringSchema("", 1, 128)}, "set"), Execute: Status})
-	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{Name: "resource.prepare", Description: "明确确认 status 返回的指纹，仅准备所指配置集合；沿用持久异步任务，不启动推理。", Async: true, InputSchema: api_auth_common.InputSchema(map[string]interface{}{"set": api_auth_common.StringSchema("", 1, 128), "confirmation_token": api_auth_common.StringSchema("", 64, 64)}, "set", "confirmation_token"), Execute: Prepare})
+	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{Name: "resource.status", Description: "查询配置资源集合及最后下载字节快照（不是推理进度）；不下载。任务生命周期仍以 task.get 为准。", APIKeyAllowed: true, InputSchema: api_auth_common.InputSchema(map[string]interface{}{"set": api_auth_common.StringSchema("", 1, 128)}, "set"), Execute: Status})
+	api_supported_methods.AddMethod(&api_supported_methods.SupportedMethod{Name: "resource.prepare", Description: "明确确认 status 返回的指纹，仅准备所指配置集合；沿用持久异步任务，不启动推理。", Async: true, APIKeyAllowed: true, InputSchema: api_auth_common.InputSchema(map[string]interface{}{"set": api_auth_common.StringSchema("", 1, 128), "confirmation_token": api_auth_common.StringSchema("", 64, 64)}, "set", "confirmation_token"), Execute: Prepare})
 }

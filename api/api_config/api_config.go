@@ -4,12 +4,15 @@ package api_config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/0xdevelop/project_template_go/api/api_grpc/api_config_grpc"
 	"github.com/0xdevelop/project_template_go/api/api_jsonRPC/api_config_jsonRPC"
 	"github.com/0xdevelop/project_template_go/api/api_mcp/api_config_mcp"
 	"github.com/0xdevelop/project_template_go/api/api_websocket/api_config_websocket"
+	"github.com/george012/gtbox/gtbox_net"
 )
 
 type ApiConfig struct {
@@ -21,8 +24,34 @@ type ApiConfig struct {
 }
 
 var (
-	CurrentApiCfg *ApiConfig
+	CurrentApiCfg           *ApiConfig
+	LatestActiveIPWithLocal string
 )
+
+// CheckLocalNet 取当前活动网卡的 IPv4，供启动日志的 Remote On 使用。取不到时返回空串，不改写成回环或全零地址。
+func CheckLocalNet() string {
+	if LatestActiveIPWithLocal == "" {
+		LatestActiveIPWithLocal = gtbox_net.GTGetLocalIPV4WithCurrentActive()
+	}
+	return LatestActiveIPWithLocal
+}
+
+// ApiListenServingLine 拼启动日志。Bind 是配置中的 bind_address 与端口；Listen 是调用方传入的真实监听地址。
+// 配置写成 0.0.0.0 时，Run On 只标本机入口 127.0.0.1，不改写 Bind，也不改 Listen。
+func ApiListenServingLine(scheme, bindAddress string, port int, listenAddr string) string {
+	configured := net.JoinHostPort(bindAddress, strconv.Itoa(port))
+	runOn := configured
+	pub := false
+	if bindAddress == "0.0.0.0" {
+		runOn = net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		pub = true
+	}
+	remote := net.JoinHostPort(CheckLocalNet(), strconv.Itoa(port))
+	return fmt.Sprintf(
+		"Bind [%s://%s] Listen [%s://%s] Run On  [%s://%s] Remote On[%s://%s] Pub Serving [%v]",
+		scheme, configured, scheme, listenAddr, scheme, runOn, scheme, remote, pub,
+	)
+}
 
 // Validate 在配置加载层拒绝缺失监听地址或端口非法的已启用 Adapter；返回首个错误。
 func (c *ApiConfig) Validate() error {
